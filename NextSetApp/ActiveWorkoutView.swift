@@ -78,6 +78,7 @@ struct ActiveWorkoutView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(!session.lockScreenState.canDecrementReps)
+                .accessibilityLabel("Decrease reps")
 
                 Text("\(session.lockScreenState.actualReps)")
                     .font(.system(size: 44, weight: .semibold, design: .rounded))
@@ -90,6 +91,7 @@ struct ActiveWorkoutView: View {
                         .frame(width: 64, height: 64)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel("Increase reps")
             }
 
             if session.lockScreenState.phase == .performingSet {
@@ -100,6 +102,7 @@ struct ActiveWorkoutView: View {
                     }
                     .buttonStyle(.bordered)
                     .disabled(viewModel.actualWeight <= 0)
+                    .accessibilityLabel("Decrease weight by 2.5 kilograms")
 
                     VStack(spacing: 2) {
                         Text("Weight")
@@ -116,6 +119,7 @@ struct ActiveWorkoutView: View {
                             .frame(minWidth: 64, minHeight: 44)
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityLabel("Increase weight by 2.5 kilograms")
                 }
             }
 

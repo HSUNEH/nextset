@@ -27,6 +27,39 @@ Covers:
 - Manual sets are session-scoped and do not mutate reusable routine templates.
 - Rest cue fallback is selected when ideal audio cannot preserve music playback.
 
+### 1.5 macOS app-shell UI automation (no Xcode required)
+
+The SwiftPM `NextSetAppShell` executable runs the real SwiftUI views on macOS
+(iOS-only chrome falls back: full-screen cover → sheet; Live Activity,
+notifications, and audio cues are no-ops). Drive it with Accessibility
+(`osascript` System Events element clicks — AXPress works without stealing
+focus) and verify with per-window screenshots (`screencapture -l <windowID>`).
+
+**Executed 2026-07-03 — full workout flow PASSED on the macOS shell:**
+
+- Routine list shows 3 default routines; History hidden while empty.
+- Start Push Foundation → set screen shows exercise, Set 1/3, target reps 34pt+,
+  target `60 kg × 8`, reps `- / +`, weight `±2.5`, Set Done — no scrolling.
+- Reps 8→7 via `-`, weight 60→62.5 via `+2.5`.
+- Set Done → rest state: countdown ticked in real time (observed 01:29 → 01:04),
+  fixed "Ready at" resume time shown, weight controls hidden during rest.
+- Next Set advanced (including early advance mid-rest).
+- Final set → "Workout complete · 3 sets · 1,217.5 kg volume"
+  (62.5×7 + 60×8 + 30×10 — actual-weight override included), Add Set disabled.
+- History row appeared immediately; detail screen showed per-set weight×reps
+  rows, total sets/volume, started/ended times.
+- Summary JSON persisted to
+  `~/Library/Group Containers/group.com.hsuneh.nextset/workout-summaries.json`
+  (ISO-8601 dates); the active-session file was cleared on completion.
+- Kill + relaunch → History still listed (persistence across restart).
+
+Found & fixed during this run: `UNUserNotificationCenter` traps in unbundled
+executables (guarded); icon-only `- / +` buttons lacked accessibility labels
+(added in app + widget).
+
+Not coverable on the shell: Live Activity rendering/intents, notification cues,
+spoken countdown/horn/haptics, music ducking — layers 2–6 below.
+
 ### 2. Xcode/iOS build gate
 
 Requires full Xcode selected:

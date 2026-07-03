@@ -81,6 +81,7 @@ struct NextSetLiveActivityWidget: Widget {
                             .font(.largeTitle)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Decrease reps")
 
                     VStack(spacing: 0) {
                         Text("\(context.state.targetReps)")
@@ -98,6 +99,7 @@ struct NextSetLiveActivityWidget: Widget {
                             .font(.largeTitle)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Increase reps")
 
                     Button(intent: CompleteSetIntent()) {
                         Text("Done").bold()

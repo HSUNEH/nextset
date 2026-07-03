@@ -21,8 +21,15 @@ public enum RestCueScheduler {
         "nextset.restcue.horn"
     ]
 
+    /// UNUserNotificationCenter traps in processes without a bundle identifier
+    /// (e.g. the SwiftPM shell executable), so notification work is skipped there.
+    private static var notificationsAvailable: Bool {
+        Bundle.main.bundleIdentifier != nil
+    }
+
     public static func requestAuthorization() {
         #if canImport(UserNotifications)
+        guard notificationsAvailable else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         #endif
     }
@@ -32,6 +39,7 @@ public enum RestCueScheduler {
     /// resumeAt is idempotent because the identifiers are fixed.
     public static func scheduleRestEndCue(resumeAt: Date, upcomingExercise: String?, now: Date = Date()) {
         #if canImport(UserNotifications)
+        guard notificationsAvailable else { return }
         let center = UNUserNotificationCenter.current()
         center.removePendingNotificationRequests(withIdentifiers: cueIdentifiers)
 
@@ -58,6 +66,7 @@ public enum RestCueScheduler {
 
     public static func cancelPendingCues() {
         #if canImport(UserNotifications)
+        guard notificationsAvailable else { return }
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: cueIdentifiers)
         #endif
     }
