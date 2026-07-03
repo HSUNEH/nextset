@@ -71,6 +71,33 @@ Build/install through Xcode:
 4. Select the connected iPhone as destination.
 5. Press Run.
 
+### Real-device attempt 2026-07-03 — blocked, deferred
+
+Connected iPhone 12 mini (`iPhone12,1`). Three stacked blockers found, so
+on-device QA was deferred (simulator QA in `docs/qa-automation.md` stands as
+the current verification):
+
+1. **Device iOS 26.5 > Xcode 26.3 (max iOS SDK 26.2).** The installed Xcode
+   ships no device-support/DDI for iOS 26.5, so deploying to this device is
+   very likely refused. Resolving this needs Xcode 26.5+, which needs
+   macOS 26.2+ (this Mac is Sequoia 15.7).
+2. **Free/personal Apple team cannot create App Groups.** The app↔Live
+   Activity extension share state via `group.com.hsuneh.nextset`; signing the
+   full app with a personal team fails on that entitlement. A paid Apple
+   Developer Program membership — or a stripped app-only build (drop the
+   extension + App Group, fall back to app-local storage) — is required.
+3. **Developer Mode was disabled** on the device (Settings → Privacy &
+   Security → Developer Mode → on → reboot). User-only manual step.
+
+The one remaining device-only gap is the **foreground audio cue** (spoken
+3-2-1 + horn + haptics over ducked music, `playbackStateAfterCue`), which is
+in-app (`InAppRestCuePlayer`) and needs no extension/App Group — so a
+stripped app-only build could verify it once the iOS/Xcode version gap is
+closed.
+
+Note: `Xcode 26.3` was signed into with Apple ID `iamsuntae@gmail.com`
+(Personal Team) for this attempt.
+
 ### App Group signing note
 
 The app and the Live Activity extension share state through the
