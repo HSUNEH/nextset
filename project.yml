@@ -21,6 +21,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.hsuneh.nextset.core
         SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: YES
   NextSet:
     type: application
     platform: iOS

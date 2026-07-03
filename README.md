@@ -49,7 +49,14 @@ Music playback test procedure (run on a real iPhone):
 
 Observed results:
 
-- Local machine has no full Xcode/simulator, so on-device observation is **pending device QA** (see `docs/qa-automation.md`). Record `playbackStateBeforeCue` / `playbackStateAfterCue` and the reached cue sequence here after the first device run.
+- **2026-07-03, iPhone 17 Pro simulator (iOS 26.3.1)** — fallback path verified
+  while locked: the Live Activity countdown reached 0:00 and the notification
+  stack delivered all four cues (`3`, `2`, `1`, `Next set — go!` with the
+  upcoming exercise name). See `docs/qa-automation.md` layer 3 for the full run.
+- Foreground ideal cue (spoken 3-2-1 + horn + haptics over ducked music) and
+  `playbackStateBeforeCue` / `playbackStateAfterCue` with a real music app are
+  **pending real-device QA** — the simulator cannot exercise audio
+  ducking/haptics meaningfully. Record device observations here.
 
 Fallback conditions:
 

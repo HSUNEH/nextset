@@ -58,23 +58,27 @@ struct NextSetLiveActivityWidget: Widget {
                     .foregroundStyle(.secondary)
             }
 
-            if isResting(context.state), let resumeAt = context.state.resumeAt {
-                VStack(spacing: 4) {
-                    Text("Rest")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(timerInterval: Date.now...max(Date.now, resumeAt), countsDown: true)
-                        .font(.system(size: 40, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .multilineTextAlignment(.center)
-                    Text("Resumes at \(resumeAt.formatted(date: .omitted, time: .shortened))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } else if context.state.phase == LockScreenPhase.completed.rawValue {
+            if context.state.phase == LockScreenPhase.completed.rawValue {
                 Label("Workout complete", systemImage: "checkmark.circle.fill")
                     .font(.headline)
             } else {
+                // Spec: rest countdown, resume time, and the reps/complete controls
+                // stay visible together. During an active rest the intents no-op;
+                // once rest has elapsed they auto-advance and act on the next set.
+                if isResting(context.state), let resumeAt = context.state.resumeAt {
+                    HStack(spacing: 8) {
+                        Text("Rest")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(timerInterval: Date.now...max(Date.now, resumeAt), countsDown: true)
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .frame(maxWidth: 80)
+                        Text("· resumes \(resumeAt.formatted(date: .omitted, time: .shortened))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 HStack(spacing: 20) {
                     Button(intent: AdjustRepsIntent(delta: -1)) {
                         Image(systemName: "minus.circle.fill")

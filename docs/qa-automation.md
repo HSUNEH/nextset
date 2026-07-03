@@ -93,7 +93,49 @@ Useful for fast app-shell checks:
 - Verify rest view appears.
 - Verify final summary after last set.
 
-Limitation: simulator is not sufficient for final Live Activity, Lock Screen, haptic/audio, or music-interruption behavior.
+Limitation: simulator is not sufficient for haptic/audio (spoken countdown,
+horn, ducking) or music-interruption behavior — those need a real device.
+Live Activity rendering, lock-screen intents, and notification cues DO work
+on the simulator (verified below).
+
+**Executed 2026-07-03 — full Live Activity flow PASSED on iPhone 17 Pro
+simulator (iOS 26.3.1, Xcode 26.3 via DEVELOPER_DIR, no global
+xcode-select change):**
+
+Technique: `xcodebuild -destination 'generic/platform=iOS Simulator'` build,
+`simctl install/launch`, `simctl io booted screenshot` for verification, and
+a CGEvent click helper mapping device-logical coordinates onto the Simulator
+window for taps (System Events `click at` is blocked on modern macOS);
+Device > Lock / Home driven via the Simulator menu bar.
+
+- App launched; starting a routine triggered the notification-permission
+  prompt (rest cues) and the lock-screen "Allow Live Activities?" prompt.
+- Set screen matched the macOS-shell QA (target reps/weight, ±, Set Done);
+  Set Done started rest with a ticking in-app countdown and resume time.
+- Lock Screen showed the Live Activity: exercise, Set n/m, self-updating
+  countdown (Text(timerInterval:) — no per-second activity updates), resume
+  time, and the − / actual reps / + / Done controls.
+- Rest-end cue fired while locked: notification stack (badge 4 = "3", "2",
+  "1", "Next set — go!") appeared at resumeAt; the second round's final
+  notification correctly named the upcoming exercise (Shoulder Press).
+- Tapping + during an active rest was ignored (intent phase guard).
+- After rest expired, one Done tap on the Lock Screen auto-advanced to the
+  next set, recorded it, ended the workout, and the activity re-rendered as
+  "Set 3/3 · Workout complete" — all without unlocking.
+- Foregrounding the app picked up the intent-completed workout from the App
+  Group store: "3 sets · 1,260 kg volume" (8×60 + 8×60 + 10×30 — exact),
+  and History listed the record.
+- Session survived an app reinstall mid-workout (shared-store adoption).
+
+Found & fixed during this run: framework target needed
+`GENERATE_INFOPLIST_FILE: YES` (build failed without it); widget hid the
+−/+/Done controls during rest, violating the "all visible simultaneously"
+acceptance criterion and leaving no lock-screen action after rest expired
+with stale content (controls now always visible; mid-rest taps no-op).
+
+Known cosmetic follow-ups: when a workout is completed from the Lock Screen,
+the app's completed screen still shows the previous set header (totals are
+correct); ended-activity header keeps the last exercise name.
 
 ### 4. Real iPhone install + logs
 

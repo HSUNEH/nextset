@@ -2,13 +2,20 @@
 
 ## Current state
 
-`NextSet.xcodeproj` is generated and ready to open in Xcode. This Mac currently has only Apple Command Line Tools selected, not full Xcode, so direct install is blocked until Xcode is installed and selected.
+**Xcode 26.3 (17C529) is installed at `/Applications/Xcode.app`** (downloaded
+from developer.apple.com — the App Store's newer Xcode requires macOS 26.2+,
+while this Mac runs Sequoia 15.7; Xcode 26.3 is the last release supporting
+macOS 15.6+). The global `xcode-select` still points at Command Line Tools on
+purpose; prefix commands with `DEVELOPER_DIR` instead:
 
-Verified blocker:
-
-```text
-xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory '/Library/Developer/CommandLineTools' is a command line tools instance
+```bash
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+xcodebuild -version   # Xcode 26.3
 ```
+
+The iOS 26.3.1 simulator runtime is installed (`xcodebuild -downloadPlatform iOS`)
+and the app has been built, installed, and QA'd on the iPhone 17 Pro simulator
+(see `docs/qa-automation.md`).
 
 ## One-time Mac setup
 
