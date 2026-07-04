@@ -15,6 +15,7 @@
 		51B613FC9CB43BF0F645F0E1 /* RestCue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95C9C93B162979E9EFE7BE2C /* RestCue.swift */; };
 		624AC2829F18296AD80A656B /* NextSetLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9FE56C0E833CFCFD259FCCF7 /* NextSetLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		669E08A9825CCBC78D8C9D6E /* NextSetCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 353E7AC50B32D58149EF135B /* NextSetCore.framework */; };
+		6FF3723F078034CC63670D52 /* RoutineSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC4D4E86BED1FC0DCD2EA135 /* RoutineSetupView.swift */; };
 		78D4AA0BE65822719505CD24 /* NextSetCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 353E7AC50B32D58149EF135B /* NextSetCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		881202887235F65D1597E89E /* RoutineListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0F634C1405EF72971C3949E /* RoutineListView.swift */; };
 		984892961B95A399DECEACA0 /* ActiveWorkoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FA003EAB126A7F305512219 /* ActiveWorkoutView.swift */; };
@@ -94,6 +95,7 @@
 		A8844F70A017E04638FADF6E /* LocalWorkoutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalWorkoutStore.swift; sourceTree = "<group>"; };
 		B8501820D376ADA989C5CC19 /* NextSetLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NextSetLiveActivityWidget.swift; sourceTree = "<group>"; };
 		D3298C85A8D64BA44318B63A /* NextSet.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = NextSet.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DC4D4E86BED1FC0DCD2EA135 /* RoutineSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineSetupView.swift; sourceTree = "<group>"; };
 		DDB8AB7FC019606778F7FF18 /* LiveActivitySupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivitySupport.swift; sourceTree = "<group>"; };
 		F0F634C1405EF72971C3949E /* RoutineListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineListView.swift; sourceTree = "<group>"; };
 		F49500D181387988A1C18685 /* NextSetApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NextSetApp.swift; sourceTree = "<group>"; };
@@ -146,6 +148,7 @@
 				F49500D181387988A1C18685 /* NextSetApp.swift */,
 				4FF4E49951F19366A1755D2D /* NextSetDesign.swift */,
 				F0F634C1405EF72971C3949E /* RoutineListView.swift */,
+				DC4D4E86BED1FC0DCD2EA135 /* RoutineSetupView.swift */,
 				A3EC4F8DAE6F7CCF2EB9E8D7 /* WorkoutViewModel.swift */,
 			);
 			path = NextSetApp;
@@ -318,6 +321,7 @@
 				B1B2B2CD035A4FBD53F296E8 /* NextSetApp.swift in Sources */,
 				BAEE665C3DD5FD0F63FB02D1 /* NextSetDesign.swift in Sources */,
 				881202887235F65D1597E89E /* RoutineListView.swift in Sources */,
+				6FF3723F078034CC63670D52 /* RoutineSetupView.swift in Sources */,
 				23EA17F38B9FD0089230D55B /* WorkoutIntents.swift in Sources */,
 				1FA1944505FC7FD235DEF0B0 /* WorkoutViewModel.swift in Sources */,
 			);

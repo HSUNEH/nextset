@@ -66,9 +66,12 @@ struct RoutineListView: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "Start workout", subtitle: "Apple-native controls, Lock Screen ready")
             ForEach(viewModel.catalog.routines) { routine in
-                RoutineCard(routine: routine) {
-                    viewModel.start(routine)
+                NavigationLink {
+                    RoutineSetupView(routine: routine, viewModel: viewModel)
+                } label: {
+                    RoutineCard(routine: routine)
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -90,7 +93,7 @@ struct RoutineListView: View {
     }
 }
 
-private struct SectionHeader: View {
+struct SectionHeader: View {
     let title: String
     let subtitle: String
 
@@ -106,7 +109,7 @@ private struct SectionHeader: View {
     }
 }
 
-private struct MetricPill: View {
+struct MetricPill: View {
     let title: String
     let value: String
     let symbol: String
@@ -128,37 +131,37 @@ private struct MetricPill: View {
 
 private struct RoutineCard: View {
     let routine: RoutineTemplate
-    let start: () -> Void
 
     var body: some View {
-        Button(action: start) {
-            HStack(spacing: 16) {
-                Image(systemName: NextSetDesign.routineSymbol(for: routine))
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 58, height: 58)
-                    .background(NextSetDesign.routineTint(for: routine).gradient, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        HStack(spacing: 16) {
+            Image(systemName: NextSetDesign.routineSymbol(for: routine))
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 58, height: 58)
+                .background(NextSetDesign.routineTint(for: routine).gradient, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(routine.routineName)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                    Text(routineSummary(routine))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Text("\(routine.plannedSets.count) sets · \(totalRestMinutes(routine)) min rest")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(NextSetDesign.routineTint(for: routine))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(routine.routineName)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Text(routineSummary(routine))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text("\(routine.plannedSets.count) sets · \(totalRestMinutes(routine)) min rest")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .nextSetCard(cornerRadius: 26)
+            Spacer()
+            VStack(spacing: 4) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.title3)
+                Text("Setup")
+                    .font(.caption2.weight(.semibold))
+            }
+            .foregroundStyle(NextSetDesign.routineTint(for: routine))
         }
-        .buttonStyle(.plain)
+        .nextSetCard(cornerRadius: 26)
     }
 
     private func routineSummary(_ routine: RoutineTemplate) -> String {
