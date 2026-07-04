@@ -247,14 +247,14 @@ struct ActiveWorkoutView: View {
                 .monospacedDigit()
                 .contentTransition(.numericText())
             if let resumeAt = state.resumeAt {
-                Text("Ready at \(resumeAt.formatted(date: .omitted, time: .shortened))")
+                Text("Auto-starts at \(resumeAt.formatted(date: .omitted, time: .shortened))")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            Button("Next Set") { viewModel.advanceToDamSet() }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .frame(minHeight: 48)
+            Text("Next set starts automatically when rest ends")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(DamSetDesign.mint)
+                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .nextSetCard(cornerRadius: 30)

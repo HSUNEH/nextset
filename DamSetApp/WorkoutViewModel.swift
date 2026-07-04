@@ -72,19 +72,6 @@ final class WorkoutViewModel {
         }
     }
 
-    func advanceToDamSet() {
-        guard var session = activeSession else { return }
-        do {
-            try engine.advanceToDamSet(session: &session)
-            activeSession = session
-            actualWeight = session.currentPlannedSet?.targetWeight ?? actualWeight
-            cuePlayer.reset()
-            sync(session)
-        } catch {
-            errorMessage = String(describing: error)
-        }
-    }
-
     func repeatCurrentSet() {
         guard var session = activeSession, let planned = session.currentPlannedSet else { return }
         engine.addSessionScopedSet(
@@ -100,11 +87,22 @@ final class WorkoutViewModel {
 
     func tick(now: Date = Date()) {
         guard var session = activeSession, session.sessionStatus == .resting else { return }
-        engine.updateRest(session: &session, now: now)
+        let previousPhase = session.lockScreenState.phase
+        let previousSetIndex = session.currentSetIndex
+
+        engine.refresh(session: &session, now: now)
+        cuePlayer.handleRestTick(remainingSeconds: session.lockScreenState.restRemainingSeconds)
+
         if session != activeSession {
             activeSession = session
+            if session.currentSetIndex != previousSetIndex || session.lockScreenState.phase == .performingSet {
+                actualWeight = session.currentPlannedSet?.targetWeight ?? actualWeight
+            }
+            if previousPhase != session.lockScreenState.phase {
+                cuePlayer.reset()
+            }
+            sync(session)
         }
-        cuePlayer.handleRestTick(remainingSeconds: session.lockScreenState.restRemainingSeconds)
     }
 
     func closeWorkout() {
