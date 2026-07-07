@@ -101,7 +101,7 @@ public enum WorkoutSessionStatus: String, Codable, Equatable, Sendable {
 public enum LockScreenPhase: String, Codable, Equatable, Sendable {
     case performingSet
     case resting
-    case readyForDamSet
+    case readyForNextSet
     case completed
 }
 

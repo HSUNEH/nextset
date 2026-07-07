@@ -102,7 +102,7 @@ public struct WorkoutEngine: Sendable {
         let remaining = max(0, Int(ceil(resumeAt.timeIntervalSince(now))))
         session.lockScreenState.restRemainingSeconds = remaining
         if remaining == 0 {
-            session.lockScreenState.phase = .readyForDamSet
+            session.lockScreenState.phase = .readyForNextSet
         }
     }
 
@@ -111,13 +111,13 @@ public struct WorkoutEngine: Sendable {
     /// taken after the rest ended applies to the set the user is about to do.
     public func refresh(session: inout WorkoutRoutineSession, now: Date = Date()) {
         updateRest(session: &session, now: now)
-        if session.lockScreenState.phase == .readyForDamSet {
-            try? advanceToDamSet(session: &session)
+        if session.lockScreenState.phase == .readyForNextSet {
+            try? advanceToNextSet(session: &session)
         }
     }
 
-    public func advanceToDamSet(session: inout WorkoutRoutineSession) throws {
-        guard session.sessionStatus == .resting || session.lockScreenState.phase == .readyForDamSet else { return }
+    public func advanceToNextSet(session: inout WorkoutRoutineSession) throws {
+        guard session.sessionStatus == .resting || session.lockScreenState.phase == .readyForNextSet else { return }
         let nextIndex = session.currentSetIndex + 1
         guard session.plannedSets.indices.contains(nextIndex - 1) else { throw WorkoutEngineError.noActiveSet }
         let nextSet = session.plannedSets[nextIndex - 1]

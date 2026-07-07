@@ -50,7 +50,7 @@ final class WorkoutEngineTests: XCTestCase {
         XCTAssertEqual(session.lockScreenState.resumeAt, now.addingTimeInterval(TimeInterval(routine.plannedSets[0].restDurationSeconds)))
     }
 
-    func testRestCountdownBecomesReadyAndAdvancesToDamSet() throws {
+    func testRestCountdownBecomesReadyAndAdvancesToNextSet() throws {
         let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
         let engine = WorkoutEngine()
         let now = Date(timeIntervalSince1970: 100)
@@ -58,10 +58,10 @@ final class WorkoutEngineTests: XCTestCase {
         try engine.completeCurrentSet(session: &session, now: now)
 
         engine.updateRest(session: &session, now: now.addingTimeInterval(TimeInterval(routine.plannedSets[0].restDurationSeconds)))
-        XCTAssertEqual(session.lockScreenState.phase, .readyForDamSet)
+        XCTAssertEqual(session.lockScreenState.phase, .readyForNextSet)
         XCTAssertEqual(session.lockScreenState.restRemainingSeconds, 0)
 
-        try engine.advanceToDamSet(session: &session)
+        try engine.advanceToNextSet(session: &session)
         XCTAssertEqual(session.sessionStatus, .active)
         XCTAssertEqual(session.currentSetIndex, 2)
         XCTAssertEqual(session.lockScreenState.phase, .performingSet)
@@ -80,7 +80,7 @@ final class WorkoutEngineTests: XCTestCase {
         let engine = WorkoutEngine()
         var session = try engine.startSession(routine: routine, now: Date(timeIntervalSince1970: 0), sessionId: "s")
         try engine.completeCurrentSet(session: &session, now: Date(timeIntervalSince1970: 1))
-        try engine.advanceToDamSet(session: &session)
+        try engine.advanceToNextSet(session: &session)
         try engine.completeCurrentSet(session: &session, now: Date(timeIntervalSince1970: 2))
 
         let summary = engine.summarize(session: session, endedAt: Date(timeIntervalSince1970: 3))

@@ -59,7 +59,7 @@ struct ActiveWorkoutView: View {
                 if session.lockScreenState.phase == .performingSet {
                     weightCard(session)
                     setDoneButton
-                } else if session.lockScreenState.phase == .resting || session.lockScreenState.phase == .readyForDamSet {
+                } else if session.lockScreenState.phase == .resting || session.lockScreenState.phase == .readyForNextSet {
                     restCard(session.lockScreenState)
                 } else if session.lockScreenState.phase == .completed {
                     completionCard
@@ -98,7 +98,7 @@ struct ActiveWorkoutView: View {
                 .tint(DamSetDesign.mint)
                 .accessibilityLabel("Workout progress")
         }
-        .nextSetCard(cornerRadius: 30)
+        .cardSurface(cornerRadius: 30)
     }
 
     private func workoutFlowCard(_ session: WorkoutRoutineSession) -> some View {
@@ -134,7 +134,7 @@ struct ActiveWorkoutView: View {
             )
         }
         .frame(maxWidth: .infinity)
-        .nextSetCard(cornerRadius: 26)
+        .cardSurface(cornerRadius: 26)
     }
 
     private func targetCard(_ session: WorkoutRoutineSession) -> some View {
@@ -163,7 +163,7 @@ struct ActiveWorkoutView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .nextSetCard(cornerRadius: 30)
+        .cardSurface(cornerRadius: 30)
     }
 
     private func repsControl(_ session: WorkoutRoutineSession) -> some View {
@@ -191,7 +191,7 @@ struct ActiveWorkoutView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .nextSetCard(cornerRadius: 30)
+        .cardSurface(cornerRadius: 30)
     }
 
     private func weightCard(_ session: WorkoutRoutineSession) -> some View {
@@ -225,7 +225,7 @@ struct ActiveWorkoutView: View {
             .buttonStyle(.bordered)
             .accessibilityLabel("Increase weight by 2.5 kilograms")
         }
-        .nextSetCard(cornerRadius: 26)
+        .cardSurface(cornerRadius: 26)
     }
 
     private var setDoneButton: some View {
@@ -257,7 +257,7 @@ struct ActiveWorkoutView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .nextSetCard(cornerRadius: 30)
+        .cardSurface(cornerRadius: 30)
     }
 
     private var completionCard: some View {
@@ -278,7 +278,7 @@ struct ActiveWorkoutView: View {
                 .controlSize(.large)
         }
         .frame(maxWidth: .infinity)
-        .nextSetCard(cornerRadius: 30)
+        .cardSurface(cornerRadius: 30)
     }
 
     private func progress(for session: WorkoutRoutineSession) -> Double {
@@ -291,7 +291,7 @@ struct ActiveWorkoutView: View {
         switch state.phase {
         case .performingSet:
             return "Set \(state.currentSetIndex)"
-        case .resting, .readyForDamSet:
+        case .resting, .readyForNextSet:
             return format(seconds: state.restRemainingSeconds)
         case .completed:
             return "Done"
@@ -304,7 +304,7 @@ struct ActiveWorkoutView: View {
             return "working"
         case .resting:
             return "left"
-        case .readyForDamSet:
+        case .readyForNextSet:
             return "ready"
         case .completed:
             return "saved"
@@ -317,7 +317,7 @@ struct ActiveWorkoutView: View {
             return "figure.strengthtraining.traditional"
         case .resting:
             return "timer"
-        case .readyForDamSet:
+        case .readyForNextSet:
             return "bell.and.waves.left.and.right.fill"
         case .completed:
             return "checkmark.seal.fill"
@@ -330,7 +330,7 @@ struct ActiveWorkoutView: View {
             return DamSetDesign.accent
         case .resting:
             return DamSetDesign.orange
-        case .readyForDamSet:
+        case .readyForNextSet:
             return DamSetDesign.mint
         case .completed:
             return .green

@@ -30,8 +30,8 @@ expect(session.lockScreenState.resumeAt != nil, "resting state has resumeAt")
 if let resumeAt = session.lockScreenState.resumeAt {
     engine.updateRest(session: &session, now: resumeAt)
 }
-expect(session.lockScreenState.phase == .readyForDamSet, "rest reaches ready state")
-try engine.advanceToDamSet(session: &session)
+expect(session.lockScreenState.phase == .readyForNextSet, "rest reaches ready state")
+try engine.advanceToNextSet(session: &session)
 expect(session.currentSetIndex == 2, "advance moves to second set")
 expect(session.lockScreenState.phase == .performingSet, "next set returns to performing")
 
@@ -57,11 +57,11 @@ if let resumeAt = session.lockScreenState.resumeAt {
     expect(session.lockScreenState.phase == .resting, "still resting mid-countdown")
     engine.updateRest(session: &session, now: resumeAt)
 }
-try engine.advanceToDamSet(session: &session)
+try engine.advanceToNextSet(session: &session)
 
 // Finish the remaining sets and verify the summary invariants.
 try engine.completeCurrentSet(session: &session, now: Date(timeIntervalSince1970: 30))
-try engine.advanceToDamSet(session: &session)
+try engine.advanceToNextSet(session: &session)
 try engine.completeCurrentSet(session: &session, now: Date(timeIntervalSince1970: 40))
 expect(session.sessionStatus == .completed, "final set completes the session")
 expect(session.workoutEndTime == Date(timeIntervalSince1970: 40), "completion stamps workoutEndTime")

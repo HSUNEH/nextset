@@ -65,7 +65,7 @@ struct RoutineSetupView: View {
                 .foregroundStyle(.white.opacity(0.72))
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .nextSetCard(cornerRadius: 32)
+        .cardSurface(cornerRadius: 32)
     }
 
     private var setsEditor: some View {
@@ -86,7 +86,7 @@ struct RoutineSetupView: View {
                     .frame(maxWidth: .infinity, minHeight: 48)
             }
             .buttonStyle(.bordered)
-            .nextSetCard(cornerRadius: 22)
+            .cardSurface(cornerRadius: 22)
         }
     }
 
@@ -203,7 +203,7 @@ private struct EditableSetCard: View {
                 )
             }
         }
-        .nextSetCard(cornerRadius: 24)
+        .cardSurface(cornerRadius: 24)
     }
 
     private var weightText: String {

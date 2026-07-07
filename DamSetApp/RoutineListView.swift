@@ -59,7 +59,7 @@ struct RoutineListView: View {
                 MetricPill(title: "Saved", value: "\(viewModel.savedSummaries.count)", symbol: "clock.arrow.circlepath")
             }
         }
-        .nextSetCard(cornerRadius: 32)
+        .cardSurface(cornerRadius: 32)
     }
 
     private var routineSection: some View {
@@ -161,7 +161,7 @@ private struct RoutineCard: View {
             }
             .foregroundStyle(DamSetDesign.routineTint(for: routine))
         }
-        .nextSetCard(cornerRadius: 26)
+        .cardSurface(cornerRadius: 26)
     }
 
     private func routineSummary(_ routine: RoutineTemplate) -> String {
@@ -201,7 +201,7 @@ private struct HistoryRow: View {
                     .monospacedDigit()
             }
         }
-        .nextSetCard(cornerRadius: 22)
+        .cardSurface(cornerRadius: 22)
     }
 }
 

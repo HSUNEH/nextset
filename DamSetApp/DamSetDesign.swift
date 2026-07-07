@@ -62,7 +62,7 @@ enum DamSetDesign {
 }
 
 extension View {
-    func nextSetCard(cornerRadius: CGFloat = 28) -> some View {
+    func cardSurface(cornerRadius: CGFloat = 28) -> some View {
         self
             .padding(18)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))

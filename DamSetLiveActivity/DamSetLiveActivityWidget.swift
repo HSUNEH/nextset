@@ -61,7 +61,7 @@ struct DamSetLiveActivityWidget: Widget {
     }
 
     private func isResting(_ state: DamSetActivityAttributes.ContentState) -> Bool {
-        state.phase == LockScreenPhase.resting.rawValue || state.phase == LockScreenPhase.readyForDamSet.rawValue
+        state.phase == LockScreenPhase.resting.rawValue || state.phase == LockScreenPhase.readyForNextSet.rawValue
     }
 
     private func lockScreenView(context: ActivityViewContext<DamSetActivityAttributes>) -> some View {
@@ -149,7 +149,7 @@ struct DamSetLiveActivityWidget: Widget {
     private func phasePill(_ state: DamSetActivityAttributes.ContentState) -> some View {
         let text: String
         let color: Color
-        if state.phase == LockScreenPhase.resting.rawValue || state.phase == LockScreenPhase.readyForDamSet.rawValue {
+        if state.phase == LockScreenPhase.resting.rawValue || state.phase == LockScreenPhase.readyForNextSet.rawValue {
             text = "REST"
             color = .orange
         } else if state.phase == LockScreenPhase.completed.rawValue {
