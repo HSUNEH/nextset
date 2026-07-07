@@ -16,6 +16,7 @@
 		5D13902986EA4BF0451CDDED /* WorkoutEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52FDB0CC31603C0D20AFAE29 /* WorkoutEngine.swift */; };
 		5DB1E05FD4AA2450D7D15EEF /* DamSetLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 380323D27E7993283F5540F4 /* DamSetLiveActivityWidget.swift */; };
 		5FD413E4FBA065C9C755B4C1 /* RestCue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B99341A42E298943F6CF9EC /* RestCue.swift */; };
+		683B8BE5E166B0A71606237C /* JSONFileBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D1697CB5D111446A1CF950 /* JSONFileBox.swift */; };
 		8F0EC385E2E908764D4B79FE /* WorkoutViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F478989BC453BD18278C2A47 /* WorkoutViewModel.swift */; };
 		8FB993FB4E8C7C61D492EEE6 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43FC3B5ED6D6DF5A52C74257 /* Models.swift */; };
 		94A10C43F060CA5A4C9CC4EA /* DamSetDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 559FE8F908DE76B347AA3297 /* DamSetDesign.swift */; };
@@ -89,6 +90,7 @@
 		5EE50DD36881B3CE672D67CB /* LocalWorkoutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalWorkoutStore.swift; sourceTree = "<group>"; };
 		6211CA0C2D7B7A99C853DD25 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		6D7C2D16B4D1A9DE22FCE679 /* DamSetApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DamSetApp.swift; sourceTree = "<group>"; };
+		76D1697CB5D111446A1CF950 /* JSONFileBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONFileBox.swift; sourceTree = "<group>"; };
 		882B9827BF9BDEE22F3E99BA /* DamSet.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = DamSet.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8E3C450E394BFFFC28B7BBE1 /* LiveActivitySupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivitySupport.swift; sourceTree = "<group>"; };
 		95F2F7E9483D7BC9E211910E /* DamSetLiveActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = DamSetLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -169,6 +171,7 @@
 			isa = PBXGroup;
 			children = (
 				A27DCCBFE5A536E6E9F1F784 /* ActiveSessionStore.swift */,
+				76D1697CB5D111446A1CF950 /* JSONFileBox.swift */,
 				8E3C450E394BFFFC28B7BBE1 /* LiveActivitySupport.swift */,
 				5EE50DD36881B3CE672D67CB /* LocalWorkoutStore.swift */,
 				43FC3B5ED6D6DF5A52C74257 /* Models.swift */,
@@ -305,6 +308,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				39BAD03EF6F32CAACB571A28 /* ActiveSessionStore.swift in Sources */,
+				683B8BE5E166B0A71606237C /* JSONFileBox.swift in Sources */,
 				B399434BF657DE7F2BA9E83F /* LiveActivitySupport.swift in Sources */,
 				9CDB6F1BA47464E5DF26CCCD /* LocalWorkoutStore.swift in Sources */,
 				8FB993FB4E8C7C61D492EEE6 /* Models.swift in Sources */,

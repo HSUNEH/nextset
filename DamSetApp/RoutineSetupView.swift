@@ -197,7 +197,7 @@ private struct EditableSetCard: View {
                 )
                 StepperField(
                     title: "rest",
-                    value: restText,
+                    value: set.restSeconds.minuteSecondText,
                     decrement: { set.restSeconds = max(0, set.restSeconds - 15) },
                     increment: { set.restSeconds += 15 }
                 )
@@ -208,12 +208,6 @@ private struct EditableSetCard: View {
 
     private var weightText: String {
         "\(set.targetWeight.formatted(.number.precision(.fractionLength(0...1))))"
-    }
-
-    private var restText: String {
-        let minutes = set.restSeconds / 60
-        let seconds = set.restSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 

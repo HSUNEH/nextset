@@ -148,7 +148,7 @@ struct ActiveWorkoutView: View {
                 .monospacedDigit()
                 .contentTransition(.numericText())
             if let planned = session.currentPlannedSet {
-                Text("\(planned.targetWeight.formatted()) kg × \(planned.targetReps) · \(format(seconds: planned.restDurationSeconds)) rest")
+                Text("\(planned.targetWeight.formatted()) kg × \(planned.targetReps) · \(planned.restDurationSeconds.minuteSecondText) rest")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -242,7 +242,7 @@ struct ActiveWorkoutView: View {
             Label("Rest", systemImage: "timer")
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            Text(format(seconds: state.restRemainingSeconds))
+            Text(state.restRemainingSeconds.minuteSecondText)
                 .font(.system(size: 64, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .contentTransition(.numericText())
@@ -292,7 +292,7 @@ struct ActiveWorkoutView: View {
         case .performingSet:
             return "Set \(state.currentSetIndex)"
         case .resting, .readyForNextSet:
-            return format(seconds: state.restRemainingSeconds)
+            return state.restRemainingSeconds.minuteSecondText
         case .completed:
             return "Done"
         }
@@ -342,9 +342,6 @@ struct ActiveWorkoutView: View {
         return "\(next.targetWeight.formatted()) kg × \(next.targetReps)"
     }
 
-    private func format(seconds: Int) -> String {
-        String(format: "%02d:%02d", seconds / 60, seconds % 60)
-    }
 }
 
 private struct FlowMetric: View {

@@ -72,3 +72,10 @@ extension View {
             )
     }
 }
+
+extension Int {
+    /// Seconds rendered as a zero-padded mm:ss string, e.g. 94 → "01:34".
+    var minuteSecondText: String {
+        String(format: "%02d:%02d", self / 60, self % 60)
+    }
+}

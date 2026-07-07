@@ -27,11 +27,10 @@ public final class InMemoryWorkoutStore: LocalWorkoutStore, @unchecked Sendable 
 /// Codable-file persistence used while SwiftData is unavailable in the local toolchain.
 /// Summaries are stored as an ISO-8601 JSON array and looked up by sessionId.
 public final class FileWorkoutStore: LocalWorkoutStore, @unchecked Sendable {
-    private let fileURL: URL
-    private let lock = NSLock()
+    private let box: JSONFileBox<[WorkoutSummary]>
 
     public init(fileURL: URL) {
-        self.fileURL = fileURL
+        self.box = JSONFileBox(fileURL: fileURL)
     }
 
     public convenience init() {
@@ -54,40 +53,19 @@ public final class FileWorkoutStore: LocalWorkoutStore, @unchecked Sendable {
     }
 
     public func save(_ summary: WorkoutSummary) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        var summaries = try load()
-        summaries.removeAll { $0.sessionId == summary.sessionId }
-        summaries.append(summary)
-
-        try FileManager.default.createDirectory(
-            at: fileURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(summaries)
-        try data.write(to: fileURL, options: .atomic)
+        try box.replace { existing in
+            var summaries = existing ?? []
+            summaries.removeAll { $0.sessionId == summary.sessionId }
+            summaries.append(summary)
+            return summaries
+        }
     }
 
     public func summary(sessionId: String) throws -> WorkoutSummary? {
-        lock.lock()
-        defer { lock.unlock() }
-        return try load().first { $0.sessionId == sessionId }
+        try box.load()?.first { $0.sessionId == sessionId }
     }
 
     public func allSummaries() throws -> [WorkoutSummary] {
-        lock.lock()
-        defer { lock.unlock() }
-        return try load().sorted { $0.workoutEndTime > $1.workoutEndTime }
-    }
-
-    private func load() throws -> [WorkoutSummary] {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
-        let data = try Data(contentsOf: fileURL)
-        guard !data.isEmpty else { return [] }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode([WorkoutSummary].self, from: data)
+        try (box.load() ?? []).sorted { $0.workoutEndTime > $1.workoutEndTime }
     }
 }

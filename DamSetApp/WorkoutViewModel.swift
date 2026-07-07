@@ -60,12 +60,9 @@ final class WorkoutViewModel {
             cuePlayer.reset()
             if session.sessionStatus == .completed {
                 lastSummary = engine.summarize(session: session, endedAt: session.workoutEndTime ?? Date())
-            }
-            let finished = session.sessionStatus == .completed
-            let snapshot = session
-            Task {
-                await WorkoutSessionSync.applyDidChange(snapshot)
-                if finished { reloadSummaries() }
+                sync(session) { [weak self] in self?.reloadSummaries() }
+            } else {
+                sync(session)
             }
         } catch {
             errorMessage = String(describing: error)
@@ -149,9 +146,12 @@ final class WorkoutViewModel {
         WorkoutSessionSync.startLiveActivity(for: stored)
     }
 
-    private func sync(_ session: WorkoutRoutineSession) {
+    /// Fire-and-forget propagation to the shared store / Live Activity / cues;
+    /// `completion` runs on the main actor after the side effects land.
+    private func sync(_ session: WorkoutRoutineSession, completion: (() -> Void)? = nil) {
         Task {
             await WorkoutSessionSync.applyDidChange(session)
+            completion?()
         }
     }
 
