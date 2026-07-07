@@ -18,6 +18,35 @@ private enum WoodTone {
     static let oakBright = Color(red: 0.788, green: 0.616, blue: 0.443)
     static let amber = Color(red: 0.780, green: 0.480, blue: 0.230)
     static let moss = Color(red: 0.518, green: 0.643, blue: 0.333)
+
+    /// Chrome bar finish for the Done CTA (matches DamSetDesign.steel).
+    static let steel = LinearGradient(
+        stops: [
+            .init(color: Color(red: 0.95, green: 0.95, blue: 0.96), location: 0.0),
+            .init(color: Color(red: 0.79, green: 0.80, blue: 0.82), location: 0.18),
+            .init(color: Color(red: 0.56, green: 0.57, blue: 0.60), location: 0.42),
+            .init(color: Color(red: 0.73, green: 0.74, blue: 0.76), location: 0.52),
+            .init(color: Color(red: 0.49, green: 0.50, blue: 0.53), location: 0.68),
+            .init(color: Color(red: 0.78, green: 0.79, blue: 0.81), location: 0.88),
+            .init(color: Color(red: 0.62, green: 0.63, blue: 0.66), location: 1.0)
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    /// Cast-iron plate face for the −/+ controls (matches DamSetDesign.ironPlate),
+    /// lifted slightly so it separates from the black activity background.
+    static let ironPlate = RadialGradient(
+        colors: [
+            Color(red: 0.33, green: 0.33, blue: 0.35),
+            Color(red: 0.16, green: 0.16, blue: 0.17)
+        ],
+        center: .init(x: 0.35, y: 0.3),
+        startRadius: 2,
+        endRadius: 40
+    )
+
+    static let ironText = Color(red: 0.10, green: 0.10, blue: 0.11)
 }
 
 struct DamSetLiveActivityWidget: Widget {
@@ -140,7 +169,9 @@ struct DamSetLiveActivityWidget: Widget {
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
                     .frame(width: 46, height: 46)
-                    .background(WoodTone.oak.opacity(0.38), in: Circle())
+                    .background(WoodTone.ironPlate, in: Circle())
+                    .overlay(Circle().inset(by: 7).stroke(.white.opacity(0.10), lineWidth: 1))
+                    .overlay(Circle().strokeBorder(.white.opacity(0.16), lineWidth: 1))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Decrease reps")
@@ -161,7 +192,9 @@ struct DamSetLiveActivityWidget: Widget {
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
                     .frame(width: 46, height: 46)
-                    .background(WoodTone.oak.opacity(0.38), in: Circle())
+                    .background(WoodTone.ironPlate, in: Circle())
+                    .overlay(Circle().inset(by: 7).stroke(.white.opacity(0.10), lineWidth: 1))
+                    .overlay(Circle().strokeBorder(.white.opacity(0.16), lineWidth: 1))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Increase reps")
@@ -169,9 +202,20 @@ struct DamSetLiveActivityWidget: Widget {
             Button(intent: CompleteSetIntent()) {
                 Text("Done")
                     .font(.headline)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(WoodTone.ironText)
                     .frame(maxWidth: .infinity, minHeight: 46)
-                    .background(WoodTone.oak, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .background(WoodTone.steel, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.9), .white.opacity(0.1), .black.opacity(0.25)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 1
+                            )
+                    )
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Complete set")

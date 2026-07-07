@@ -89,12 +89,9 @@ struct RoutineSetupView: View {
             dismiss()
         } label: {
             Text("Start Workout")
-                .font(.headline)
-                .frame(maxWidth: .infinity, minHeight: 40)
+                .frame(maxWidth: .infinity, minHeight: 56)
         }
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.roundedRectangle(radius: 16))
-        .controlSize(.large)
+        .buttonStyle(SteelBarButtonStyle())
         .disabled(!canStart)
         .accessibilityLabel("Start workout with edited set plan")
     }
@@ -236,10 +233,14 @@ private struct StepperField: View {
     private func stepButton(symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
                 .frame(width: 34, height: 30)
-                .background(DamSetDesign.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .background(DamSetDesign.ironPlate, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                )
         }
         .buttonStyle(.plain)
     }

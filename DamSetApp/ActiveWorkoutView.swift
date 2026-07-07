@@ -165,7 +165,7 @@ struct ActiveWorkoutView: View {
 
     private func repsControl(_ session: WorkoutRoutineSession) -> some View {
         HStack(spacing: 20) {
-            CircleControl(symbol: "minus", label: "Decrease reps") {
+            IronPlateControl(symbol: "minus", label: "Decrease reps") {
                 viewModel.adjustReps(-1)
             }
             .disabled(!session.lockScreenState.canDecrementReps)
@@ -183,7 +183,7 @@ struct ActiveWorkoutView: View {
             }
             .frame(minWidth: 84)
 
-            CircleControl(symbol: "plus", label: "Increase reps") {
+            IronPlateControl(symbol: "plus", label: "Increase reps") {
                 viewModel.adjustReps(1)
             }
         }
@@ -199,7 +199,7 @@ struct ActiveWorkoutView: View {
                     .monospacedDigit()
                     .frame(minWidth: 64, minHeight: 40)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(SteelBarButtonStyle(cornerRadius: 12))
             .disabled(viewModel.actualWeight <= 0)
             .accessibilityLabel("Decrease weight by 2.5 kilograms")
 
@@ -221,7 +221,7 @@ struct ActiveWorkoutView: View {
                     .monospacedDigit()
                     .frame(minWidth: 64, minHeight: 40)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(SteelBarButtonStyle(cornerRadius: 12))
             .accessibilityLabel("Increase weight by 2.5 kilograms")
         }
         .cardSurface(cornerRadius: 20)
@@ -232,12 +232,9 @@ struct ActiveWorkoutView: View {
             viewModel.completeSet()
         } label: {
             Text("Set Done")
-                .font(.headline)
-                .frame(maxWidth: .infinity, minHeight: 40)
+                .frame(maxWidth: .infinity, minHeight: 56)
         }
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.roundedRectangle(radius: 16))
-        .controlSize(.large)
+        .buttonStyle(SteelBarButtonStyle())
         .accessibilityLabel("Complete current set")
     }
 
@@ -279,10 +276,11 @@ struct ActiveWorkoutView: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
-            Button("Done") { viewModel.closeWorkout() }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.roundedRectangle(radius: 14))
-                .controlSize(.large)
+            Button { viewModel.closeWorkout() } label: {
+                Text("Done")
+                    .frame(minWidth: 140, minHeight: 48)
+            }
+            .buttonStyle(SteelBarButtonStyle(cornerRadius: 14))
         }
         .frame(maxWidth: .infinity)
         .cardSurface(cornerRadius: 20)
@@ -379,23 +377,5 @@ private struct FlowMetric: View {
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
-    }
-}
-
-private struct CircleControl: View {
-    let symbol: String
-    let label: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 56, height: 56)
-                .background(DamSetDesign.controlFill, in: Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
     }
 }
