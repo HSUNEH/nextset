@@ -145,7 +145,10 @@ targets, and an install/launch smoke on the iPhone 17 Pro simulator
 earlier 26.3-era QA survived the upgrade (persistence intact). The same build
 also installed and launched cleanly on a freshly created iPhone 17 Pro
 simulator running **iOS 26.5** (the physical iPhone's OS version). No source
-changes were needed for the new toolchain.
+changes were needed for the new toolchain. Re-checked 2026-07-07 on the
+renamed DamSet main (after the workout-setup/design-pass work landed): the
+SwiftPM gate and the Xcode 26.6 simulator build of `DamSet.xcodeproj` still
+pass.
 
 ### 4. Real iPhone install + logs
 
