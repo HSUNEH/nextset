@@ -77,6 +77,7 @@ public enum RestCueScheduler {
 /// keeps playing (ducked) via AVAudioSession .playback + .duckOthers and is
 /// restored with notifyOthersOnDeactivation. Off-iOS this is a no-op shell so
 /// callers compile everywhere.
+@MainActor
 public final class InAppRestCuePlayer {
     #if os(iOS)
     private let synthesizer = AVSpeechSynthesizer()

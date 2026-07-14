@@ -46,8 +46,9 @@ if case .fallbackNotificationAndHaptics(let reason) = cue {
     expect(false, "interrupted playback should choose fallback")
 }
 
-// Set 2 of 4: actual-weight override and mid-rest countdown.
-try engine.completeCurrentSet(session: &session, actualWeight: 62.5, now: Date(timeIntervalSince1970: 20))
+// Set 2 of 4: canonical actual-weight adjustment and mid-rest countdown.
+try engine.adjustActualWeight(session: &session, delta: 62.5 - session.lockScreenState.actualWeight)
+try engine.completeCurrentSet(session: &session, now: Date(timeIntervalSince1970: 20))
 expect(session.completedSets.last?.actualWeight == 62.5, "actual weight override is recorded")
 expect(session.sessionStatus == .resting, "non-final set starts rest")
 
@@ -85,15 +86,18 @@ let listed = try reloaded.allSummaries()
 expect(listed.count == 1, "saving the same sessionId upserts instead of duplicating")
 try? FileManager.default.removeItem(at: storeURL)
 
-// Engine refresh: once rest fully elapses, the session auto-advances so a
-// lock-screen action applies to the set the user is about to perform.
+// Engine refresh only updates wall-clock rest. Advancing is an explicit action
+// so the app and Lock Screen cannot silently skip the ready state.
 var refreshSession = try engine.startSession(routine: routine, now: Date(timeIntervalSince1970: 0), sessionId: "refresh")
 try engine.completeCurrentSet(session: &refreshSession, now: Date(timeIntervalSince1970: 5))
 if let resumeAt = refreshSession.lockScreenState.resumeAt {
     engine.refresh(session: &refreshSession, now: resumeAt)
 }
-expect(refreshSession.currentSetIndex == 2, "refresh advances past an elapsed rest")
-expect(refreshSession.lockScreenState.phase == .performingSet, "refresh lands on performing the next set")
+expect(refreshSession.currentSetIndex == 1, "refresh keeps the completed set selected")
+expect(refreshSession.lockScreenState.phase == .readyForNextSet, "refresh exposes the ready state")
+try engine.advanceToNextSet(session: &refreshSession)
+expect(refreshSession.currentSetIndex == 2, "explicit advance moves to the next set")
+expect(refreshSession.lockScreenState.phase == .performingSet, "explicit advance starts the next set")
 
 // Active session store round-trip used for app <-> Live Activity intent sharing.
 let sessionURL = FileManager.default.temporaryDirectory

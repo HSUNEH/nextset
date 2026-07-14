@@ -25,7 +25,7 @@ let package = Package(
             name: "DamSetAppShell",
             dependencies: ["DamSetCore"],
             path: "DamSetApp",
-            exclude: ["Info.plist", "DamSet.entitlements"]
+            exclude: ["Info.plist", "DamSet.entitlements", "Assets.xcassets"]
         ),
         .executableTarget(name: "DamSetCoreSmoke", dependencies: ["DamSetCore"]),
         .testTarget(

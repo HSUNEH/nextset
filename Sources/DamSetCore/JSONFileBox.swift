@@ -42,7 +42,33 @@ final class JSONFileBox<Value: Codable>: @unchecked Sendable {
         let data = try Data(contentsOf: fileURL)
         guard !data.isEmpty else { return nil }
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+
+            // Current files encode the complete TimeInterval so sub-second
+            // timestamps round-trip without being truncated.
+            if let seconds = try? container.decode(Double.self) {
+                return Date(timeIntervalSince1970: seconds)
+            }
+
+            // Continue accepting the ISO-8601 strings written by earlier
+            // versions so an app update never invalidates local history.
+            let value = try container.decode(String.self)
+            let fractionalFormatter = ISO8601DateFormatter()
+            fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = fractionalFormatter.date(from: value) {
+                return date
+            }
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+            if let date = formatter.date(from: value) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Expected seconds-since-1970 or an ISO-8601 date"
+            )
+        }
         return try decoder.decode(Value.self, from: data)
     }
 
@@ -52,7 +78,10 @@ final class JSONFileBox<Value: Codable>: @unchecked Sendable {
             withIntermediateDirectories: true
         )
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(date.timeIntervalSince1970)
+        }
         let data = try encoder.encode(value)
         try data.write(to: fileURL, options: .atomic)
     }

@@ -6,6 +6,7 @@ struct DamSetApp: App {
     var body: some Scene {
         WindowGroup {
             RoutineListView(viewModel: WorkoutViewModel())
+                .preferredColorScheme(.dark)
         }
     }
 }

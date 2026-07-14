@@ -23,6 +23,7 @@ Build an iPhone SwiftUI app where users can configure a workout routine in the a
 - Mark the set as complete
 - Start the rest timer after set completion
 - Show remaining rest time and next-set restart time
+- Explicitly skip rest or start the next set when ready
 - Notify the user near rest completion
 
 ### Rest completion cue
@@ -66,7 +67,7 @@ Fallback conditions:
 
 - iPhone-only iOS app
 - SwiftUI-first native Apple design
-- iOS 17+ target for Live Activity / ActivityKit exploration
+- iOS 26.0+ deployment target
 - Apple Watch, iPad, and macOS are deferred
 
 ## Design reference
@@ -91,11 +92,11 @@ Use Apple’s official design resources and Human Interface Guidelines:
 This repo now contains a testable Swift core plus iOS app/Live Activity source scaffolding:
 
 - `Package.swift` — SwiftPM package for `DamSetCore` and core tests.
-- `Sources/DamSetCore/` — routine catalog, planned/completed sets, workout session state, lock-screen state, rest cue policy, summary calculation, and local-store protocol with in-memory and JSON-file (`FileWorkoutStore`) implementations. Set completion accepts an optional actual-weight override (defaults to the planned target weight).
+- `Sources/DamSetCore/` — routine catalog, planned/completed sets, workout session state, lock-screen state, rest cue policy, summary calculation, and local-store protocol with in-memory and JSON-file (`FileWorkoutStore`) implementations. Actual reps and weight live in one canonical session state shared by the app and Live Activity.
 - `Sources/DamSetCoreSmoke/` — executable smoke verification for default routines, reps adjustment, set completion, rest transitions, manual session-scoped sets, audio fallback policy, actual-weight override, full-session summary invariants, and file-store round-trip. `XcodeTests/DamSetCoreTests/` keeps XCTest coverage for full Xcode environments.
 - `DamSetApp/` — SwiftUI iPhone app for routine selection and active workout flow: 1 Hz rest countdown tick, actual-weight editing during a set, session-scoped set repeat, end-workout confirmation (full-screen cover so the session can't be swiped away), workout summaries persisted via `FileWorkoutStore`, and a History section with a per-set final record screen.
 - `DamSetLiveActivity/` — ActivityKit widget for the Lock Screen / Dynamic Island: target reps centered with `- / +` actual reps adjustment and set completion via `LiveActivityIntent` (runs in the app process against the shared App Group session store), a self-updating rest countdown (`Text(timerInterval:)`), and resume-at time. The Live Activity starts when a workout starts, updates on every state change, and ends with the session.
-- App ↔ extension state sharing uses the `group.com.hsuneh.damset` App Group: `ActiveSessionStore` holds the in-flight session, `FileWorkoutStore` holds saved summaries, and `WorkoutSessionSync` applies one shared side-effect pipeline (persist → schedule/cancel rest cues → sync Live Activity) for both the in-app UI and lock-screen intents.
+- `ActiveSessionStore` holds the in-flight session, `FileWorkoutStore` holds saved summaries, and `WorkoutSessionSync` applies one shared side-effect pipeline (persist → schedule/cancel rest cues → sync Live Activity). Free-team device builds use the app-local container; restore the App Group entitlements for separate-process sharing on a paid team.
 - `docs/design-notes.md` — Apple HIG checklist plus Rest cue and iOS audio behavior test policy.
 - `DamSet.xcodeproj` / `project.yml` — Xcode project generated with XcodeGen for iOS app, core framework, and Live Activity extension targets.
 - `docs/qa-automation.md` — layered QA plan for core tests, Xcode builds, simulator checks, real iPhone install, iPhone Mirroring/QuickTime screen-observed QA, and Lock Screen/Live Activity validation.
@@ -103,13 +104,12 @@ This repo now contains a testable Swift core plus iOS app/Live Activity source s
 
 ### Local verification
 
-The current machine has Apple Command Line Tools but not full Xcode selected, and this CLT install cannot import XCTest, so `xcodebuild` and `swift test` are blocked locally. The verified local gate is:
+The verified local gate is:
 
 ```bash
-swift build   # compiles DamSetCore, the SwiftUI app shell, and the Live Activity sources for the host platform
+swift test
 swift run DamSetCoreSmoke
+xcodebuild test -project DamSet.xcodeproj -scheme DamSet -destination 'platform=iOS Simulator,name=iPhone 16e,OS=26.3'
 ruby -e 'require "yaml"; YAML.load_file("seed.yaml"); puts "seed yaml ok"'
 git diff --check
 ```
-
-After full Xcode is installed/selected, add the iOS app/widget targets in Xcode and run an iPhone simulator or device build for the SwiftUI/ActivityKit shell.

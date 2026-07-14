@@ -4,6 +4,7 @@ public enum WorkoutEngineError: Error, Equatable, Sendable {
     case routineHasNoSets
     case noActiveSet
     case sessionAlreadyCompleted
+    case invalidTransition
 }
 
 public enum RestCueDecision: Equatable, Sendable {
@@ -33,25 +34,46 @@ public struct WorkoutEngine: Sendable {
     }
 
     public func adjustActualReps(session: inout WorkoutRoutineSession, delta: Int) throws {
-        guard session.sessionStatus != .completed else { throw WorkoutEngineError.sessionAlreadyCompleted }
+        try validateEditableProgress(session)
         let updatedReps = max(0, session.lockScreenState.actualReps + delta)
-        session.lockScreenState.actualReps = updatedReps
         if session.sessionStatus == .resting,
            let lastCompletedIndex = session.completedSets.indices.last {
             session.completedSets[lastCompletedIndex].actualReps = updatedReps
+        } else if session.sessionStatus == .resting {
+            throw WorkoutEngineError.noActiveSet
         }
+        session.lockScreenState.actualReps = updatedReps
     }
 
-    /// Completes the current set. `actualWeight` overrides the recorded weight when the user
-    /// edited it in the app; when nil, the planned target weight is recorded per spec.
-    public func completeCurrentSet(session: inout WorkoutRoutineSession, actualWeight: Double? = nil, now: Date = Date()) throws {
+    public func adjustActualWeight(session: inout WorkoutRoutineSession, delta: Double) throws {
+        try validateEditableProgress(session)
+        let updatedWeight = max(0, session.lockScreenState.actualWeight + delta)
+        if session.sessionStatus == .resting,
+           let lastCompletedIndex = session.completedSets.indices.last {
+            session.completedSets[lastCompletedIndex].actualWeight = updatedWeight
+        } else if session.sessionStatus == .resting {
+            throw WorkoutEngineError.noActiveSet
+        }
+        session.lockScreenState.actualWeight = updatedWeight
+    }
+
+    /// Completes the active set using canonical progress from
+    /// `lockScreenState`, shared by the app and Live Activity.
+    public func completeCurrentSet(session: inout WorkoutRoutineSession, now: Date = Date()) throws {
         guard session.sessionStatus != .completed else { throw WorkoutEngineError.sessionAlreadyCompleted }
+        guard session.sessionStatus == .active,
+              session.lockScreenState.phase == .performingSet else {
+            throw WorkoutEngineError.invalidTransition
+        }
         guard let planned = session.currentPlannedSet else { throw WorkoutEngineError.noActiveSet }
+        guard !session.completedSets.contains(where: { $0.setId == planned.setId }) else {
+            throw WorkoutEngineError.invalidTransition
+        }
 
         let completed = CompletedSet(
             setId: planned.setId,
             exerciseName: planned.exerciseName,
-            actualWeight: actualWeight ?? planned.targetWeight,
+            actualWeight: session.lockScreenState.actualWeight,
             actualReps: session.lockScreenState.actualReps,
             completedAt: now
         )
@@ -64,7 +86,8 @@ public struct WorkoutEngine: Sendable {
                 after: planned,
                 setIndex: session.currentSetIndex,
                 totalSets: session.plannedSets.count,
-                actualReps: completed.actualReps
+                actualReps: completed.actualReps,
+                actualWeight: completed.actualWeight
             )
             return
         }
@@ -75,8 +98,25 @@ public struct WorkoutEngine: Sendable {
             setIndex: session.currentSetIndex,
             totalSets: session.plannedSets.count,
             actualReps: completed.actualReps,
+            actualWeight: completed.actualWeight,
             resumeAt: now.addingTimeInterval(TimeInterval(planned.restDurationSeconds))
         )
+    }
+
+    /// Source-compatible bridge for older callers. New call sites should
+    /// mutate weight through `adjustActualWeight` and use the canonical
+    /// overload above.
+    public func completeCurrentSet(
+        session: inout WorkoutRoutineSession,
+        actualWeight: Double?,
+        now: Date = Date()
+    ) throws {
+        var updatedSession = session
+        if let actualWeight {
+            updatedSession.lockScreenState.actualWeight = max(0, actualWeight)
+        }
+        try completeCurrentSet(session: &updatedSession, now: now)
+        session = updatedSession
     }
 
     public func updateRest(session: inout WorkoutRoutineSession, now: Date = Date()) {
@@ -88,18 +128,18 @@ public struct WorkoutEngine: Sendable {
         }
     }
 
-    /// Brings a session up to date with wall-clock time. Once rest has fully
-    /// elapsed the session advances to the next set, so a lock-screen action
-    /// taken after the rest ended applies to the set the user is about to do.
+    /// Brings the wall-clock countdown up to date without changing sets. The
+    /// user explicitly advances (or skips rest) through `advanceToNextSet`.
     public func refresh(session: inout WorkoutRoutineSession, now: Date = Date()) {
         updateRest(session: &session, now: now)
-        if session.lockScreenState.phase == .readyForNextSet {
-            try? advanceToNextSet(session: &session)
-        }
     }
 
     public func advanceToNextSet(session: inout WorkoutRoutineSession) throws {
-        guard session.sessionStatus == .resting || session.lockScreenState.phase == .readyForNextSet else { return }
+        guard session.sessionStatus == .resting,
+              session.lockScreenState.phase == .resting
+                || session.lockScreenState.phase == .readyForNextSet else {
+            throw WorkoutEngineError.invalidTransition
+        }
         guard let nextSet = session.nextPlannedSet else { throw WorkoutEngineError.noActiveSet }
         let nextIndex = session.currentSetIndex + 1
         session.currentSetIndex = nextIndex
@@ -129,5 +169,19 @@ public struct WorkoutEngine: Sendable {
             return .idealAudioAllowed
         }
         return .fallbackNotificationAndHaptics(reason: "Ideal countdown audio must preserve playbackState=playing and comply with iOS policy")
+    }
+
+    private func validateEditableProgress(_ session: WorkoutRoutineSession) throws {
+        guard session.sessionStatus != .completed else {
+            throw WorkoutEngineError.sessionAlreadyCompleted
+        }
+        let isPerforming = session.sessionStatus == .active
+            && session.lockScreenState.phase == .performingSet
+        let isCorrectingCompletedSet = session.sessionStatus == .resting
+            && (session.lockScreenState.phase == .resting
+                || session.lockScreenState.phase == .readyForNextSet)
+        guard isPerforming || isCorrectingCompletedSet else {
+            throw WorkoutEngineError.invalidTransition
+        }
     }
 }

@@ -8,42 +8,73 @@ import DamSetCore
 /// the rest-cue notifications are all mutated through the same
 /// WorkoutSessionSync pipeline the in-app UI uses.
 ///
-/// The session is refreshed against wall-clock time first: once rest has fully
-/// elapsed, the action applies to the set the user is about to perform. Taps
-/// during an active rest can still correct the just-finished rep count, but
-/// completing a set remains performing-only.
-private func performLockScreenAction(allowsRestingCorrection: Bool = false, _ mutate: (WorkoutEngine, inout WorkoutRoutineSession) throws -> Void) async {
-    let store = WorkoutSessionSync.sessionStore
-    guard var session = (try? store.load()) ?? nil else { return }
-    let engine = WorkoutEngine()
-    engine.refresh(session: &session)
-    let canMutate = session.lockScreenState.phase == .performingSet ||
-        (allowsRestingCorrection && session.lockScreenState.phase == .resting)
-    guard canMutate else {
-        await WorkoutSessionSync.applyDidChange(session)
-        return
+/// Every action is scoped to the Live Activity's session ID. This keeps an old
+/// activity from mutating a newer workout if iOS has not dismissed it yet.
+///
+/// Refreshing only updates the wall-clock rest phase; it intentionally does
+/// not advance the set. That makes +/- during both an active and an expired
+/// rest correct the set that was just completed.
+private enum LockScreenAction: Sendable {
+    case adjustReps(Int)
+    case completeSet
+    case advanceToNextSet
+}
+
+/// App Intent taps can arrive almost simultaneously. Serializing the full
+/// load → mutate → save cycle prevents rapid +/- taps from overwriting each
+/// other with stale snapshots.
+private actor LockScreenActionCoordinator {
+    static let shared = LockScreenActionCoordinator()
+
+    func perform(sessionId expectedSessionId: String, action: LockScreenAction) async throws {
+        let store = WorkoutSessionSync.sessionStore
+        guard var session = try store.load(), session.sessionId == expectedSessionId else { return }
+        let engine = WorkoutEngine()
+        engine.refresh(session: &session)
+
+        switch action {
+        case .adjustReps(let delta):
+            try engine.adjustActualReps(session: &session, delta: delta)
+        case .completeSet:
+            guard session.lockScreenState.phase == .performingSet else {
+                try await WorkoutSessionSync.applyDidChange(session)
+                return
+            }
+            try engine.completeCurrentSet(session: &session)
+        case .advanceToNextSet:
+            guard session.sessionStatus == .resting else {
+                try await WorkoutSessionSync.applyDidChange(session)
+                return
+            }
+            try engine.advanceToNextSet(session: &session)
+        }
+
+        try await WorkoutSessionSync.applyDidChange(session)
     }
-    do {
-        try mutate(engine, &session)
-    } catch {
-        return
-    }
-    await WorkoutSessionSync.applyDidChange(session)
 }
 
 struct AdjustRepsIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Adjust Reps"
     static let isDiscoverable = false
 
+    @Parameter(title: "Session ID") var sessionId: String
     @Parameter(title: "Delta") var delta: Int
 
-    init() { self.delta = 0 }
-    init(delta: Int) { self.delta = delta }
+    init() {
+        self.sessionId = ""
+        self.delta = 0
+    }
+
+    init(sessionId: String, delta: Int) {
+        self.sessionId = sessionId
+        self.delta = delta
+    }
 
     func perform() async throws -> some IntentResult {
-        await performLockScreenAction(allowsRestingCorrection: true) { engine, session in
-            try engine.adjustActualReps(session: &session, delta: delta)
-        }
+        try await LockScreenActionCoordinator.shared.perform(
+            sessionId: sessionId,
+            action: .adjustReps(delta)
+        )
         return .result()
     }
 }
@@ -52,12 +83,33 @@ struct CompleteSetIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Complete Set"
     static let isDiscoverable = false
 
-    init() {}
+    @Parameter(title: "Session ID") var sessionId: String
+
+    init() { self.sessionId = "" }
+    init(sessionId: String) { self.sessionId = sessionId }
 
     func perform() async throws -> some IntentResult {
-        await performLockScreenAction { engine, session in
-            try engine.completeCurrentSet(session: &session)
-        }
+        try await LockScreenActionCoordinator.shared.perform(sessionId: sessionId, action: .completeSet)
+        return .result()
+    }
+}
+
+/// Starts the next set explicitly. During an active countdown this is the
+/// user's "skip rest" action; after expiry it is the "next set" action.
+struct AdvanceToNextSetIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Start Next Set"
+    static let isDiscoverable = false
+
+    @Parameter(title: "Session ID") var sessionId: String
+
+    init() { self.sessionId = "" }
+    init(sessionId: String) { self.sessionId = sessionId }
+
+    func perform() async throws -> some IntentResult {
+        try await LockScreenActionCoordinator.shared.perform(
+            sessionId: sessionId,
+            action: .advanceToNextSet
+        )
         return .result()
     }
 }

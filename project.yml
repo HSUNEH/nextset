@@ -76,6 +76,17 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.hsuneh.damset.liveactivity
         SKIP_INSTALL: YES
+  DamSetCoreTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - XcodeTests/DamSetCoreTests
+    dependencies:
+      - target: DamSetCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hsuneh.damset.core-tests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   DamSet:
     build:
@@ -87,5 +98,8 @@ schemes:
       config: Debug
     test:
       config: Debug
+      gatherCoverageData: true
+      targets:
+        - name: DamSetCoreTests
     archive:
       config: Release

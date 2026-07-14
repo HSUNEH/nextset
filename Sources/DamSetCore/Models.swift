@@ -111,6 +111,11 @@ public struct LockScreenState: Codable, Equatable, Sendable {
     public var totalPlannedSets: Int
     public var targetReps: Int
     public var actualReps: Int
+    /// The single source of truth for the weight being performed or most
+    /// recently completed. Keeping this beside `actualReps` lets the app and
+    /// Live Activity mutate the same progress instead of maintaining separate
+    /// process-local values.
+    public var actualWeight: Double
     public var canCompleteSet: Bool
     public var restRemainingSeconds: Int
     public var resumeAt: Date?
@@ -126,6 +131,7 @@ public struct LockScreenState: Codable, Equatable, Sendable {
         totalPlannedSets: Int,
         targetReps: Int,
         actualReps: Int,
+        actualWeight: Double,
         canCompleteSet: Bool,
         restRemainingSeconds: Int,
         resumeAt: Date?,
@@ -136,6 +142,7 @@ public struct LockScreenState: Codable, Equatable, Sendable {
         self.totalPlannedSets = max(1, totalPlannedSets)
         self.targetReps = max(0, targetReps)
         self.actualReps = max(0, actualReps)
+        self.actualWeight = max(0, actualWeight)
         self.canCompleteSet = canCompleteSet
         self.restRemainingSeconds = max(0, restRemainingSeconds)
         self.resumeAt = resumeAt
@@ -149,6 +156,7 @@ public struct LockScreenState: Codable, Equatable, Sendable {
             totalPlannedSets: totalSets,
             targetReps: set.targetReps,
             actualReps: set.targetReps,
+            actualWeight: set.targetWeight,
             canCompleteSet: true,
             restRemainingSeconds: 0,
             resumeAt: nil,
@@ -156,13 +164,21 @@ public struct LockScreenState: Codable, Equatable, Sendable {
         )
     }
 
-    public static func resting(after set: PlannedSet, setIndex: Int, totalSets: Int, actualReps: Int, resumeAt: Date) -> LockScreenState {
+    public static func resting(
+        after set: PlannedSet,
+        setIndex: Int,
+        totalSets: Int,
+        actualReps: Int,
+        actualWeight: Double,
+        resumeAt: Date
+    ) -> LockScreenState {
         LockScreenState(
             exerciseName: set.exerciseName,
             currentSetIndex: setIndex,
             totalPlannedSets: totalSets,
             targetReps: set.targetReps,
             actualReps: actualReps,
+            actualWeight: actualWeight,
             canCompleteSet: false,
             restRemainingSeconds: set.restDurationSeconds,
             resumeAt: resumeAt,
@@ -170,18 +186,56 @@ public struct LockScreenState: Codable, Equatable, Sendable {
         )
     }
 
-    public static func completed(after set: PlannedSet, setIndex: Int, totalSets: Int, actualReps: Int) -> LockScreenState {
+    public static func completed(
+        after set: PlannedSet,
+        setIndex: Int,
+        totalSets: Int,
+        actualReps: Int,
+        actualWeight: Double
+    ) -> LockScreenState {
         LockScreenState(
             exerciseName: set.exerciseName,
             currentSetIndex: setIndex,
             totalPlannedSets: totalSets,
             targetReps: set.targetReps,
             actualReps: actualReps,
+            actualWeight: actualWeight,
             canCompleteSet: false,
             restRemainingSeconds: 0,
             resumeAt: nil,
             phase: .completed
         )
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case exerciseName
+        case currentSetIndex
+        case totalPlannedSets
+        case targetReps
+        case actualReps
+        case actualWeight
+        case canCompleteSet
+        case restRemainingSeconds
+        case resumeAt
+        case phase
+    }
+
+    /// Older persisted sessions did not contain `actualWeight`. Decode those
+    /// sessions instead of discarding them; `WorkoutRoutineSession` performs a
+    /// second migration pass where the surrounding planned/completed set data
+    /// is available.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        exerciseName = try container.decode(String.self, forKey: .exerciseName)
+        currentSetIndex = max(1, try container.decode(Int.self, forKey: .currentSetIndex))
+        totalPlannedSets = max(1, try container.decode(Int.self, forKey: .totalPlannedSets))
+        targetReps = max(0, try container.decode(Int.self, forKey: .targetReps))
+        actualReps = max(0, try container.decode(Int.self, forKey: .actualReps))
+        actualWeight = max(0, try container.decodeIfPresent(Double.self, forKey: .actualWeight) ?? 0)
+        canCompleteSet = try container.decode(Bool.self, forKey: .canCompleteSet)
+        restRemainingSeconds = max(0, try container.decode(Int.self, forKey: .restRemainingSeconds))
+        resumeAt = try container.decodeIfPresent(Date.self, forKey: .resumeAt)
+        phase = try container.decode(LockScreenPhase.self, forKey: .phase)
     }
 }
 
@@ -233,6 +287,57 @@ public struct WorkoutRoutineSession: Identifiable, Codable, Equatable, Sendable 
     public var nextPlannedSet: PlannedSet? {
         guard plannedSets.indices.contains(currentSetIndex) else { return nil }
         return plannedSets[currentSetIndex]
+    }
+}
+
+extension WorkoutRoutineSession {
+    private enum CodingKeys: String, CodingKey {
+        case sessionId
+        case routineId
+        case routineName
+        case plannedSets
+        case completedSets
+        case currentSetIndex
+        case sessionStatus
+        case workoutStartTime
+        case workoutEndTime
+        case lockScreenState
+        case restCountdownCue
+    }
+
+    /// Migrates pre-`actualWeight` active-session files using information that
+    /// is not available while decoding `LockScreenState` in isolation.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionId = try container.decode(String.self, forKey: .sessionId)
+        routineId = try container.decode(String.self, forKey: .routineId)
+        routineName = try container.decode(String.self, forKey: .routineName)
+        plannedSets = try container.decode([PlannedSet].self, forKey: .plannedSets)
+        completedSets = try container.decode([CompletedSet].self, forKey: .completedSets)
+        currentSetIndex = try container.decode(Int.self, forKey: .currentSetIndex)
+        sessionStatus = try container.decode(WorkoutSessionStatus.self, forKey: .sessionStatus)
+        workoutStartTime = try container.decode(Date.self, forKey: .workoutStartTime)
+        workoutEndTime = try container.decodeIfPresent(Date.self, forKey: .workoutEndTime)
+        lockScreenState = try container.decode(LockScreenState.self, forKey: .lockScreenState)
+        restCountdownCue = try container.decode(RestCountdownCue.self, forKey: .restCountdownCue)
+
+        let legacyLockState = try? container.nestedContainer(
+            keyedBy: LockScreenState.CodingKeys.self,
+            forKey: .lockScreenState
+        )
+        if legacyLockState?.contains(.actualWeight) != true {
+            let currentPlannedSet = plannedSets.indices.contains(currentSetIndex - 1)
+                ? plannedSets[currentSetIndex - 1]
+                : nil
+            switch sessionStatus {
+            case .resting, .completed:
+                lockScreenState.actualWeight = completedSets.last?.actualWeight
+                    ?? currentPlannedSet?.targetWeight
+                    ?? 0
+            case .notStarted, .active, .cancelled:
+                lockScreenState.actualWeight = currentPlannedSet?.targetWeight ?? 0
+            }
+        }
     }
 }
 

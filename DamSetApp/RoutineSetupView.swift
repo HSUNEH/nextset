@@ -31,7 +31,12 @@ struct RoutineSetupView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
                 .padding(.bottom, 10)
-                .background(.bar)
+                .background(DamSetDesign.screenBackground.opacity(0.96))
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(DamSetDesign.steelMuted)
+                        .frame(height: 1)
+                }
         }
         .navigationTitle("Setup")
         .inlineNavigationTitle()
@@ -45,6 +50,8 @@ struct RoutineSetupView: View {
             }
         }
         .tint(DamSetDesign.accent)
+        .preferredColorScheme(.dark)
+        .gymNavigationChrome()
     }
 
     private var headerCard: some View {
@@ -52,10 +59,12 @@ struct RoutineSetupView: View {
             TextField("Routine name", text: $draftName)
                 .font(.title2.bold())
                 .foregroundStyle(.primary)
+                .tint(DamSetDesign.accent)
             Text("\(draftSets.count) sets · \(totalRestMinutes) rest")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .cardSurface(cornerRadius: 20)
     }
 
@@ -79,7 +88,15 @@ struct RoutineSetupView: View {
                     .frame(maxWidth: .infinity, minHeight: 52)
             }
             .buttonStyle(.plain)
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
             .background(DamSetDesign.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(
+                        DamSetDesign.steelMuted,
+                        style: StrokeStyle(lineWidth: 1, dash: [6, 4])
+                    )
+            }
         }
     }
 
@@ -90,10 +107,12 @@ struct RoutineSetupView: View {
         } label: {
             Text("Start Workout")
                 .font(.headline)
+                .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, minHeight: 40)
+                .padding(.vertical, 4)
         }
-        .buttonStyle(.glassProminent)
-        .tint(DamSetDesign.accent)
+        .buttonStyle(GymPrimaryButtonStyle())
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .disabled(!canStart)
         .accessibilityLabel("Start workout with edited set plan")
     }
@@ -104,7 +123,7 @@ struct RoutineSetupView: View {
     }
 
     private var totalRestMinutes: String {
-        let seconds = draftSets.reduce(0) { $0 + $1.restSeconds }
+        let seconds = draftSets.dropLast().reduce(0) { $0 + $1.restSeconds }
         return "\(seconds / 60)m"
     }
 
@@ -156,6 +175,7 @@ private struct EditableSetCard: View {
     let canDelete: Bool
     let duplicate: () -> Void
     let delete: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -163,43 +183,76 @@ private struct EditableSetCard: View {
                 TextField("Exercise", text: $set.exerciseName)
                     .font(.headline)
                     .foregroundStyle(.primary)
+                    .tint(DamSetDesign.accent)
                 Spacer()
                 Menu {
                     Button("Duplicate", systemImage: "plus.square.on.square") { duplicate() }
                     Button("Delete", systemImage: "trash", role: .destructive) { delete() }
                         .disabled(!canDelete)
                 } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32)
-                        .background(DamSetDesign.controlFill, in: Circle())
+                        Image(systemName: "ellipsis")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DamSetDesign.steel)
+                            .frame(width: 44, height: 44)
+                            .background(DamSetDesign.controlFill, in: Circle())
+                            .overlay {
+                                Circle()
+                                    .stroke(DamSetDesign.steelMuted, lineWidth: 1)
+                            }
                 }
             }
 
-            HStack(spacing: 0) {
+            if dynamicTypeSize.isAccessibilitySize {
                 StepperField(
                     title: "kg",
                     value: weightText,
                     decrement: { set.targetWeight = max(0, set.targetWeight - 2.5) },
                     increment: { set.targetWeight += 2.5 }
                 )
-                Divider().frame(height: 48)
+                Divider().overlay(DamSetDesign.steelMuted)
                 StepperField(
                     title: "reps",
                     value: "\(set.targetReps)",
                     decrement: { set.targetReps = max(0, set.targetReps - 1) },
                     increment: { set.targetReps += 1 }
                 )
-                Divider().frame(height: 48)
+                Divider().overlay(DamSetDesign.steelMuted)
                 StepperField(
                     title: "rest",
                     value: set.restSeconds.minuteSecondText,
                     decrement: { set.restSeconds = max(0, set.restSeconds - 15) },
                     increment: { set.restSeconds += 15 }
                 )
+            } else {
+                HStack(spacing: 0) {
+                    StepperField(
+                        title: "kg",
+                        value: weightText,
+                        decrement: { set.targetWeight = max(0, set.targetWeight - 2.5) },
+                        increment: { set.targetWeight += 2.5 }
+                    )
+                    Divider()
+                        .overlay(DamSetDesign.steelMuted)
+                        .frame(height: 48)
+                    StepperField(
+                        title: "reps",
+                        value: "\(set.targetReps)",
+                        decrement: { set.targetReps = max(0, set.targetReps - 1) },
+                        increment: { set.targetReps += 1 }
+                    )
+                    Divider()
+                        .overlay(DamSetDesign.steelMuted)
+                        .frame(height: 48)
+                    StepperField(
+                        title: "rest",
+                        value: set.restSeconds.minuteSecondText,
+                        decrement: { set.restSeconds = max(0, set.restSeconds - 15) },
+                        increment: { set.restSeconds += 15 }
+                    )
+                }
             }
         }
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .cardSurface(cornerRadius: 20)
     }
 
@@ -218,14 +271,14 @@ private struct StepperField: View {
         VStack(spacing: 7) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
             Text(value)
                 .font(.title3.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            HStack(spacing: 10) {
+            HStack(spacing: 0) {
                 stepButton(symbol: "minus", action: decrement)
                 stepButton(symbol: "plus", action: increment)
             }
@@ -237,10 +290,11 @@ private struct StepperField: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.caption.weight(.semibold))
-                .frame(width: 30, height: 26)
+                .foregroundStyle(DamSetDesign.accent)
+                .frame(width: 44, height: 44)
         }
-        .buttonStyle(.glass)
-        .tint(DamSetDesign.accent)
+        .buttonStyle(GymCompactStepperButtonStyle())
+        .accessibilityLabel("\(symbol == "minus" ? "Decrease" : "Increase") \(title)")
     }
 }
 

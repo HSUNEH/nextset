@@ -20,6 +20,7 @@ struct RoutineListView: View {
             }
             .background(DamSetDesign.screenBackground.ignoresSafeArea())
             .navigationTitle("DamSet")
+            .inlineNavigationTitle()
             .workoutSessionCover(item: Binding(get: { viewModel.activeSession }, set: { viewModel.activeSession = $0 })) { _ in
                 ActiveWorkoutView(viewModel: viewModel)
             }
@@ -30,6 +31,8 @@ struct RoutineListView: View {
             }
         }
         .tint(DamSetDesign.accent)
+        .preferredColorScheme(.dark)
+        .gymNavigationChrome()
     }
 
     private var routineSection: some View {
@@ -81,39 +84,81 @@ struct SectionHeader: View {
             }
         }
         .padding(.horizontal, 4)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
 }
 
 private struct RoutineRow: View {
     let routine: RoutineTemplate
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: DamSetDesign.routineSymbol(for: routine))
-                .font(.system(size: 19, weight: .semibold))
-                .foregroundStyle(DamSetDesign.routineTint(for: routine))
-                .frame(width: 44, height: 44)
-                .background(DamSetDesign.routineTint(for: routine).opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(routine.routineName)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                Text(exerciseSummary(routine))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                Text("\(routine.plannedSets.count) sets · \(totalRestMinutes(routine)) min rest")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        routineIcon
+                        Spacer(minLength: 8)
+                        chevron
+                    }
+                    Text(routine.routineName)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
+                    routineDetails
+                }
+            } else {
+                HStack(spacing: 14) {
+                    routineIcon
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(routine.routineName)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
+                        routineDetails
+                    }
+                    Spacer(minLength: 8)
+                    chevron
+                }
             }
-            Spacer(minLength: 8)
-            Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
         }
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .cardSurface()
+    }
+
+    private var routineIcon: some View {
+        Image(systemName: DamSetDesign.routineSymbol(for: routine))
+            .font(.system(size: 19, weight: .semibold))
+            .foregroundStyle(DamSetDesign.accent)
+            .frame(width: 44, height: 44)
+            .background(DamSetDesign.controlFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(DamSetDesign.steelMuted, lineWidth: 1)
+            }
+    }
+
+    private var routineDetails: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(exerciseSummary(routine))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+            Text("\(routine.plannedSets.count) sets · \(totalRestMinutes(routine)) min rest")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+        }
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.right")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(DamSetDesign.steel)
     }
 
     private func exerciseSummary(_ routine: RoutineTemplate) -> String {
@@ -122,61 +167,94 @@ private struct RoutineRow: View {
     }
 
     private func totalRestMinutes(_ routine: RoutineTemplate) -> Int {
-        routine.plannedSets.reduce(0) { $0 + $1.restDurationSeconds } / 60
+        routine.plannedSets.dropLast().reduce(0) { $0 + $1.restDurationSeconds } / 60
     }
 }
 
 private struct HistoryRow: View {
     let summary: WorkoutSummary
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "checkmark")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(DamSetDesign.moss)
-                .frame(width: 44, height: 44)
-                .background(DamSetDesign.moss.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(summary.routineName)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                Text(summary.workoutEndTime.formatted(date: .abbreviated, time: .shortened))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 3) {
-                Text("\(summary.totalSets) sets")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Text("\(summary.totalVolume.formatted()) kg")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    historyIcon
+                    historyIdentity
+                    historyMetrics
+                }
+            } else {
+                HStack(spacing: 14) {
+                    historyIcon
+                    historyIdentity
+                    Spacer(minLength: 8)
+                    historyMetrics
+                }
             }
         }
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .cardSurface()
+    }
+
+    private var historyIcon: some View {
+        Image(systemName: "checkmark")
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(DamSetDesign.accent)
+            .frame(width: 44, height: 44)
+            .background(DamSetDesign.controlFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(DamSetDesign.steelMuted, lineWidth: 1)
+            }
+    }
+
+    private var historyIdentity: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(summary.routineName)
+                .font(.headline)
+                .foregroundStyle(.primary)
+            Text(summary.workoutEndTime.formatted(date: .abbreviated, time: .shortened))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var historyMetrics: some View {
+        VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing, spacing: 3) {
+            Text("\(summary.totalSets) sets")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text("\(summary.totalVolume.formatted()) kg")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
     }
 }
 
 struct WorkoutSummaryDetailView: View {
     let summary: WorkoutSummary
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         List {
             Section("Sets") {
                 ForEach(Array(summary.completedSets.enumerated()), id: \.offset) { index, set in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(set.exerciseName)
-                            Text("Set \(index + 1)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    Group {
+                        if dynamicTypeSize.isAccessibilitySize {
+                            VStack(alignment: .leading, spacing: 8) {
+                                completedSetIdentity(index: index, set: set)
+                                completedSetValue(set)
+                            }
+                        } else {
+                            HStack {
+                                completedSetIdentity(index: index, set: set)
+                                Spacer()
+                                completedSetValue(set)
+                            }
                         }
-                        Spacer()
-                        Text("\(set.actualWeight.formatted()) kg × \(set.actualReps)")
-                            .monospacedDigit()
                     }
+                    .listRowBackground(DamSetDesign.surface)
                 }
             }
             Section("Totals") {
@@ -185,8 +263,45 @@ struct WorkoutSummaryDetailView: View {
                 LabeledContent("Started", value: summary.workoutStartTime.formatted(date: .abbreviated, time: .shortened))
                 LabeledContent("Ended", value: summary.workoutEndTime.formatted(date: .abbreviated, time: .shortened))
             }
+            .listRowBackground(DamSetDesign.surface)
         }
+        .scrollContentBackground(.hidden)
+        .background(DamSetDesign.screenBackground)
+        .listSectionSeparatorTint(DamSetDesign.steelMuted)
         .navigationTitle(summary.routineName)
         .inlineNavigationTitle()
+        .tint(DamSetDesign.accent)
+        .preferredColorScheme(.dark)
+        .gymNavigationChrome()
+    }
+
+    private func completedSetIdentity(index: Int, set: CompletedSet) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(set.exerciseName)
+                .foregroundStyle(.primary)
+            Text("Set \(index + 1)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func completedSetValue(_ set: CompletedSet) -> some View {
+        Text("\(set.actualWeight.formatted()) kg × \(set.actualReps)")
+            .monospacedDigit()
+            .foregroundStyle(.primary)
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func gymNavigationChrome() -> some View {
+        #if os(iOS)
+        self
+            .toolbarBackground(DamSetDesign.chromeBackground, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        #else
+        self
+        #endif
     }
 }

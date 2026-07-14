@@ -11,16 +11,18 @@ public struct DamSetActivityAttributes: ActivityAttributes {
         public var totalPlannedSets: Int
         public var targetReps: Int
         public var actualReps: Int
+        public var actualWeight: Double
         public var restRemainingSeconds: Int
         public var resumeAt: Date?
         public var phase: String
 
-        public init(exerciseName: String, currentSetIndex: Int, totalPlannedSets: Int, targetReps: Int, actualReps: Int, restRemainingSeconds: Int, resumeAt: Date?, phase: String) {
+        public init(exerciseName: String, currentSetIndex: Int, totalPlannedSets: Int, targetReps: Int, actualReps: Int, actualWeight: Double, restRemainingSeconds: Int, resumeAt: Date?, phase: String) {
             self.exerciseName = exerciseName
             self.currentSetIndex = currentSetIndex
             self.totalPlannedSets = totalPlannedSets
             self.targetReps = targetReps
             self.actualReps = actualReps
+            self.actualWeight = actualWeight
             self.restRemainingSeconds = restRemainingSeconds
             self.resumeAt = resumeAt
             self.phase = phase
@@ -33,6 +35,7 @@ public struct DamSetActivityAttributes: ActivityAttributes {
                 totalPlannedSets: state.totalPlannedSets,
                 targetReps: state.targetReps,
                 actualReps: state.actualReps,
+                actualWeight: state.actualWeight,
                 restRemainingSeconds: state.restRemainingSeconds,
                 resumeAt: state.resumeAt,
                 phase: state.phase.rawValue
@@ -63,12 +66,23 @@ public enum WorkoutSessionSync {
     public static let sessionStore = ActiveSessionStore(appGroupId: appGroupId)
     public static let summaryStore = FileWorkoutStore(appGroupId: appGroupId)
 
+    #if os(iOS) && canImport(ActivityKit)
+    private static func activityContent(for session: WorkoutRoutineSession) -> ActivityContent<DamSetActivityAttributes.ContentState> {
+        let lockState = session.lockScreenState
+        let staleDate = lockState.phase == .resting ? lockState.resumeAt : nil
+        return ActivityContent(
+            state: DamSetActivityAttributes.ContentState(lockState),
+            staleDate: staleDate
+        )
+    }
+    #endif
+
     /// Starts the Live Activity for a session, or adopts an existing one after
     /// an app relaunch.
     public static func startLiveActivity(for session: WorkoutRoutineSession) {
         #if os(iOS) && canImport(ActivityKit)
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        let content = ActivityContent(state: DamSetActivityAttributes.ContentState(session.lockScreenState), staleDate: nil)
+        let content = activityContent(for: session)
         if let existing = Activity<DamSetActivityAttributes>.activities.first(where: { $0.attributes.sessionId == session.sessionId }) {
             Task { await existing.update(content) }
             return
@@ -82,7 +96,7 @@ public enum WorkoutSessionSync {
     /// activity when the session is finished.
     public static func updateLiveActivity(for session: WorkoutRoutineSession) async {
         #if os(iOS) && canImport(ActivityKit)
-        let content = ActivityContent(state: DamSetActivityAttributes.ContentState(session.lockScreenState), staleDate: nil)
+        let content = activityContent(for: session)
         for activity in Activity<DamSetActivityAttributes>.activities where activity.attributes.sessionId == session.sessionId {
             if session.sessionStatus == .completed || session.sessionStatus == .cancelled {
                 await activity.end(content, dismissalPolicy: .default)
@@ -103,18 +117,21 @@ public enum WorkoutSessionSync {
 
     /// Applies every side effect a session mutation requires. Call after each
     /// engine operation, whether it ran in the app or in a Live Activity intent.
-    public static func applyDidChange(_ session: WorkoutRoutineSession) async {
+    public static func applyDidChange(_ session: WorkoutRoutineSession) async throws {
         switch session.sessionStatus {
         case .completed:
             let summary = WorkoutEngine().summarize(session: session, endedAt: session.workoutEndTime ?? Date())
-            try? summaryStore.save(summary)
-            try? sessionStore.clear()
+            // The active session is only cleared after the durable summary
+            // succeeds. A caller can surface/retry either error without losing
+            // the completed workout.
+            try summaryStore.save(summary)
+            try sessionStore.clear()
             RestCueScheduler.cancelPendingCues()
         case .cancelled:
-            try? sessionStore.clear()
+            try sessionStore.clear()
             RestCueScheduler.cancelPendingCues()
         default:
-            try? sessionStore.save(session)
+            try sessionStore.save(session)
             if session.sessionStatus == .resting,
                session.lockScreenState.phase == .resting,
                let resumeAt = session.lockScreenState.resumeAt {
