@@ -110,15 +110,51 @@ build/install/launch). Still open for the next on-device session:
 - Blocker 3 — enable Developer Mode on the iPhone and connect it
   (`devicectl` listed it as unavailable/disconnected during this session).
 
+**Update 2026-07-08: on-device install and launch SUCCEEDED — all install
+blockers resolved.** What it took, in order:
+
+1. Developer Mode: the Settings toggle only appears after the host pokes the
+   device's development channel (`xcrun devicectl device info processes ...`
+   is enough; it fails with "Developer Mode disabled" but surfaces the
+   toggle). Enable → reboot.
+2. First DDI mount additionally requires the phone to be **unlocked**
+   (error 12040 until then). State is visible via
+   `xcrun devicectl list devices` ("no DDI" annotation disappears).
+3. Free-team signing: the **extension does not need the App Group** — the
+   Live Activity renders from ActivityKit content state and the intents run
+   in the app process, while the stores fall back to app-local containers.
+   So instead of stripping the extension, only the App Group entitlements
+   were removed (project.yml, 2026-07-08) and the full app + Live Activity
+   signs fine with the personal team (`DEVELOPMENT_TEAM: BL626GZ9S8`,
+   selected once in Xcode's Signing & Capabilities to mint the identity).
+4. Deploy loop (headless):
+
+```bash
+xcodebuild -project DamSet.xcodeproj -scheme DamSet \
+  -destination 'platform=iOS,id=<udid>' -allowProvisioningUpdates build
+xcrun devicectl device install app --device <udid> \
+  ~/Library/Developer/Xcode/DerivedData/DamSet-*/Build/Products/Debug-iphoneos/DamSet.app
+xcrun devicectl device process launch --device <udid> com.hsuneh.damset
+```
+
+5. First launch is blocked until the user trusts the developer profile on
+   the phone (Settings → General → VPN & Device Management), and remote
+   launch fails with "Locked" while the phone is locked.
+
+Free-team caveats: profiles expire after 7 days (redeploy to refresh) and
+history lives in the app-local container (no App Group).
+
 ### App Group signing note
 
-The app and the Live Activity extension share state through the
-`group.com.hsuneh.damset` App Group (both targets carry generated
-`.entitlements` files). With automatic signing, Xcode registers the group on
-the selected team the first time you build. If the chosen team cannot register
-that identifier, change the group id in both entitlement blocks in
-`project.yml` **and** in `WorkoutSessionSync.appGroupId`
-(`Sources/DamSetCore/LiveActivitySupport.swift`), then regenerate the project.
+The app and the Live Activity extension shared state through the
+`group.com.hsuneh.damset` App Group until 2026-07-08, when the entitlements
+were removed so a free personal team can sign both targets (see above — the
+stores in `WorkoutSessionSync` fall back to app-local containers, and the
+Live Activity flow tolerates that because `LiveActivityIntent` runs in the
+app process). If a paid team arrives, restore the `entitlements:` blocks on
+both targets in `project.yml` (they're in git history; search
+`application-groups`) and regenerate — `WorkoutSessionSync.appGroupId` is
+still `group.com.hsuneh.damset`.
 
 ## First QA after install
 

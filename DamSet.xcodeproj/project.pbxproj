@@ -262,12 +262,15 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					4AFA71E98FD0BD1D72ADE20A = {
+						DevelopmentTeam = BL626GZ9S8;
 						ProvisioningStyle = Automatic;
 					};
 					67DFC9D5CEA70451AFCB2FE6 = {
+						DevelopmentTeam = BL626GZ9S8;
 						ProvisioningStyle = Automatic;
 					};
 					9AEEC5243426F7D0B2C8F2A2 = {
+						DevelopmentTeam = BL626GZ9S8;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -355,7 +358,6 @@
 		2BB9415DEC320EFDE1BCEC7A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = DamSetLiveActivity/DamSetLiveActivity.entitlements;
 				INFOPLIST_FILE = DamSetLiveActivity/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -373,7 +375,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = DamSetApp/DamSet.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = DamSetApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -436,7 +437,6 @@
 		BA6F2AE534C30D2C950F2262 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = DamSetLiveActivity/DamSetLiveActivity.entitlements;
 				INFOPLIST_FILE = DamSetLiveActivity/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -454,7 +454,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = DamSetApp/DamSet.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = DamSetApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -505,6 +504,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = BL626GZ9S8;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -570,6 +570,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = BL626GZ9S8;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;

@@ -233,8 +233,14 @@ Run on real iPhone:
 - ~~Full Xcode is not selected on this Mac~~ — resolved 2026-07-03: Xcode 26.6
   (iOS 26.5 SDK) is installed and globally selected; the iOS/Xcode version gap
   against the iPhone (iOS 26.5) is closed.
-- Real iPhone build/install requires a stripped app-only variant (free
-  personal team cannot sign the App Group / Live Activity extension), plus a
-  connected trusted iPhone with Developer Mode enabled.
-- Final Lock Screen/audio behavior (spoken 3-2-1 + horn over ducked music)
-  must be verified on the physical device.
+- ~~Real iPhone build/install~~ — resolved 2026-07-08: the App Group
+  entitlements (not the extension) turned out to be the only free-team
+  blocker; with them removed, the full app + Live Activity installs and
+  launches on the iPhone 11 (iOS 26.5) via `devicectl` (see
+  `docs/install.md` for the exact sequence). iPhone Mirroring is confirmed
+  working as the screen-observed QA channel (layer 5), including catching a
+  real layout bug (routine-row truncation) on the device.
+- Final Lock Screen/audio behavior (spoken 3-2-1 + horn over ducked music,
+  Live Activity card on the real Lock Screen) still needs eyes/ears on the
+  physical device — mirroring cannot show the Lock Screen and disconnects
+  while the phone is in hand.

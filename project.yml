@@ -9,6 +9,13 @@ settings:
     SWIFT_VERSION: "6.0"
     IPHONEOS_DEPLOYMENT_TARGET: "26.0"
     CODE_SIGN_STYLE: Automatic
+    # Free personal team (iamsuntae@gmail.com); set 2026-07-08 for real-device
+    # installs. App Group entitlements were removed on the same date — free
+    # teams cannot register them, and the stores in DamSetCore fall back to
+    # app-local containers, which the Live Activity flow tolerates because
+    # LiveActivityIntent runs in the app process. Restore the entitlements
+    # blocks (git log: search application-groups) if a paid team arrives.
+    DEVELOPMENT_TEAM: BL626GZ9S8
     ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
 packages: {}
 targets:
@@ -30,11 +37,6 @@ targets:
       # Live Activity intents are compiled into the app too so LiveActivityIntent
       # runs perform() in the app process (shared session mutation pipeline).
       - DamSetLiveActivity/WorkoutIntents.swift
-    entitlements:
-      path: DamSetApp/DamSet.entitlements
-      properties:
-        com.apple.security.application-groups:
-          - group.com.hsuneh.damset
     dependencies:
       - target: DamSetCore
       - target: DamSetLiveActivity
@@ -59,11 +61,6 @@ targets:
     platform: iOS
     sources:
       - DamSetLiveActivity
-    entitlements:
-      path: DamSetLiveActivity/DamSetLiveActivity.entitlements
-      properties:
-        com.apple.security.application-groups:
-          - group.com.hsuneh.damset
     dependencies:
       - target: DamSetCore
         embed: false
