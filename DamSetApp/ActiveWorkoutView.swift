@@ -50,7 +50,7 @@ struct ActiveWorkoutView: View {
 
     private func workoutContent(_ session: WorkoutRoutineSession) -> some View {
         ScrollView {
-            VStack(spacing: 12) {
+            VStack(spacing: 14) {
                 workoutHeader(session)
                 workoutFlowCard(session)
                 targetCard(session)

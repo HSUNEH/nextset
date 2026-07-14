@@ -17,7 +17,7 @@ struct RoutineSetupView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 30) {
                 headerCard
                 setsEditor
             }
@@ -60,7 +60,7 @@ struct RoutineSetupView: View {
     }
 
     private var setsEditor: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "Sets", subtitle: "Exercise · kg · reps · rest")
             ForEach($draftSets) { $set in
                 EditableSetCard(
@@ -158,7 +158,7 @@ private struct EditableSetCard: View {
     let delete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline) {
                 TextField("Exercise", text: $set.exerciseName)
                     .font(.headline)
@@ -177,19 +177,21 @@ private struct EditableSetCard: View {
                 }
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 0) {
                 StepperField(
                     title: "kg",
                     value: weightText,
                     decrement: { set.targetWeight = max(0, set.targetWeight - 2.5) },
                     increment: { set.targetWeight += 2.5 }
                 )
+                Divider().frame(height: 48)
                 StepperField(
                     title: "reps",
                     value: "\(set.targetReps)",
                     decrement: { set.targetReps = max(0, set.targetReps - 1) },
                     increment: { set.targetReps += 1 }
                 )
+                Divider().frame(height: 48)
                 StepperField(
                     title: "rest",
                     value: set.restSeconds.minuteSecondText,
@@ -213,30 +215,29 @@ private struct StepperField: View {
     let increment: () -> Void
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 7) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
             Text(value)
-                .font(.headline.monospacedDigit())
+                .font(.title3.weight(.semibold))
+                .monospacedDigit()
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            HStack(spacing: 6) {
+            HStack(spacing: 10) {
                 stepButton(symbol: "minus", action: decrement)
                 stepButton(symbol: "plus", action: increment)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(DamSetDesign.controlFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func stepButton(symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.footnote.weight(.semibold))
-                .frame(width: 34, height: 28)
+                .font(.caption.weight(.semibold))
+                .frame(width: 30, height: 26)
         }
         .buttonStyle(.glass)
         .tint(DamSetDesign.accent)

@@ -19,7 +19,7 @@ enum DamSetDesign {
 
     /// Screen background: light birch in light mode, dark walnut at night.
     static let screenBackground = dynamic(
-        light: Color(red: 0.961, green: 0.937, blue: 0.890),
+        light: Color(red: 0.933, green: 0.902, blue: 0.839),
         dark: Color(red: 0.102, green: 0.090, blue: 0.075)
     )
 
