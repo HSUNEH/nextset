@@ -7,9 +7,10 @@ import DamSetCore
 final class WorkoutViewModel {
     private let engine = WorkoutEngine()
     private let store: LocalWorkoutStore
+    private let routineStore: RoutineTemplateStore
     private let sessionStore = WorkoutSessionSync.sessionStore
     private let cuePlayer = InAppRestCuePlayer()
-    let catalog = RoutineCatalog()
+    var catalog = RoutineCatalog(routines: [])
     var activeSession: WorkoutRoutineSession?
     var lastSummary: WorkoutSummary?
     var savedSummaries: [WorkoutSummary] = []
@@ -20,14 +21,31 @@ final class WorkoutViewModel {
 
     var isBusy: Bool { isCompletingSet || isClosingWorkout }
 
-    init(store: LocalWorkoutStore = WorkoutSessionSync.summaryStore) {
+    init(
+        store: LocalWorkoutStore = WorkoutSessionSync.summaryStore,
+        routineStore: RoutineTemplateStore = WorkoutSessionSync.routineStore
+    ) {
         self.store = store
+        self.routineStore = routineStore
+        reloadRoutines()
         reloadSummaries()
         adoptSharedSessionIfPresent()
     }
 
+    @discardableResult
+    func saveRoutine(_ routine: RoutineTemplate) -> Bool {
+        do {
+            try routineStore.upsert(routine)
+            reloadRoutines()
+            return true
+        } catch {
+            report(error, context: "Routine could not be saved")
+            return false
+        }
+    }
+
     func start(_ routine: RoutineTemplate) {
-        guard !isBusy else { return }
+        guard !isBusy, activeSession == nil else { return }
         do {
             let session = try engine.startSession(routine: routine)
             activeSession = session
@@ -61,6 +79,16 @@ final class WorkoutViewModel {
         } catch {
             report(error, context: "Weight could not be updated")
         }
+    }
+
+    func setReps(_ value: Int) {
+        guard let current = activeSession?.lockScreenState.actualReps else { return }
+        adjustReps(max(0, value) - current)
+    }
+
+    func setWeight(_ value: Double) {
+        guard let current = activeSession?.lockScreenState.actualWeight else { return }
+        adjustWeight(max(0, value) - current)
     }
 
     func completeSet() {
@@ -103,6 +131,64 @@ final class WorkoutViewModel {
         }
     }
 
+    func adjustRest(_ deltaSeconds: Int) {
+        guard !isBusy, var session = activeSession else { return }
+        do {
+            try engine.adjustRest(session: &session, deltaSeconds: deltaSeconds)
+            activeSession = session
+            cuePlayer.reset()
+            sync(session)
+        } catch {
+            report(error, context: "Rest time could not be updated")
+        }
+    }
+
+    func undoLastCompletedSet() {
+        guard !isBusy, var session = activeSession else { return }
+        let wasCompleted = session.sessionStatus == .completed
+        let completedSessionId = session.sessionId
+        do {
+            try engine.undoLastCompletedSet(session: &session)
+        } catch {
+            report(error, context: "Completed set could not be restored")
+            return
+        }
+
+        cuePlayer.reset()
+        if !wasCompleted {
+            activeSession = session
+            sync(session)
+            return
+        }
+
+        // A completed session keeps its old ID as a tombstone in the mutation
+        // gate. Reopening under a fresh ID prevents an intent that captured the
+        // pre-Undo snapshot from completing the restored workout again.
+        session.sessionId = UUID().uuidString
+
+        isCompletingSet = true
+        let previous = pendingSync
+        pendingSync = Task { [weak self] in
+            await previous?.value
+            guard let self else { return }
+            do {
+                try await WorkoutSessionSync.reopenCompletedSession(session)
+                WorkoutSessionSync.startLiveActivity(for: session)
+                self.activeSession = session
+                self.lastSummary = nil
+                do {
+                    try self.store.delete(sessionId: completedSessionId)
+                } catch {
+                    self.report(error, context: "Old completion record could not be removed")
+                }
+                self.reloadSummaries()
+            } catch {
+                self.report(error, context: "Completed set could not be restored")
+            }
+            self.isCompletingSet = false
+        }
+    }
+
     func repeatCurrentSet() {
         guard !isBusy, var session = activeSession, let planned = session.currentPlannedSet else { return }
         engine.addSessionScopedSet(
@@ -134,20 +220,44 @@ final class WorkoutViewModel {
     }
 
     func closeWorkout() {
-        guard !isClosingWorkout else { return }
+        guard !isCompletingSet, !isClosingWorkout,
+              let sessionId = activeSession?.sessionId else { return }
         isClosingWorkout = true
         let pending = self.pendingSync
         Task { [weak self] in
             guard let self else { return }
             await pending?.value
             do {
-                try self.sessionStore.clear()
-                RestCueScheduler.cancelPendingCues()
-                await WorkoutSessionSync.endAllLiveActivities()
+                try await WorkoutSessionSync.discardSession(sessionId: sessionId)
                 self.activeSession = nil
                 self.cuePlayer.reset()
             } catch {
                 self.report(error, context: "Workout could not be closed")
+            }
+            self.isClosingWorkout = false
+        }
+    }
+
+    func finishAndSaveWorkout() {
+        guard !isClosingWorkout,
+              let session = activeSession,
+              !session.completedSets.isEmpty else { return }
+        isClosingWorkout = true
+        let pending = pendingSync
+        Task { [weak self] in
+            guard let self else { return }
+            await pending?.value
+            do {
+                let summary = try await WorkoutSessionSync.finishAndSaveCompletedSets(
+                    fallbackSession: session,
+                    store: self.store
+                )
+                self.lastSummary = summary
+                self.activeSession = nil
+                self.cuePlayer.reset()
+                self.reloadSummaries()
+            } catch {
+                self.report(error, context: "Completed sets could not be saved")
             }
             self.isClosingWorkout = false
         }
@@ -249,6 +359,15 @@ final class WorkoutViewModel {
             savedSummaries = try store.allSummaries()
         } catch {
             errorMessage = String(describing: error)
+        }
+    }
+
+    private func reloadRoutines() {
+        do {
+            catalog = RoutineCatalog(routines: try routineStore.loadAll())
+        } catch {
+            catalog = RoutineCatalog()
+            report(error, context: "Saved routines could not be loaded")
         }
     }
 }

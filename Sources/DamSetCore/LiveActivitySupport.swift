@@ -65,6 +65,7 @@ public enum WorkoutSessionSync {
     /// through the same instance for that lock to mean anything.
     public static let sessionStore = ActiveSessionStore(appGroupId: appGroupId)
     public static let summaryStore = FileWorkoutStore(appGroupId: appGroupId)
+    public static let routineStore = FileRoutineTemplateStore(appGroupId: appGroupId)
 
     #if os(iOS) && canImport(ActivityKit)
     private static func activityContent(for session: WorkoutRoutineSession) -> ActivityContent<DamSetActivityAttributes.ContentState> {
@@ -83,7 +84,10 @@ public enum WorkoutSessionSync {
         #if os(iOS) && canImport(ActivityKit)
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let content = activityContent(for: session)
-        if let existing = Activity<DamSetActivityAttributes>.activities.first(where: { $0.attributes.sessionId == session.sessionId }) {
+        if let existing = Activity<DamSetActivityAttributes>.activities.first(where: {
+            $0.attributes.sessionId == session.sessionId
+                && ($0.activityState == .active || $0.activityState == .stale)
+        }) {
             Task { await existing.update(content) }
             return
         }
@@ -99,7 +103,7 @@ public enum WorkoutSessionSync {
         let content = activityContent(for: session)
         for activity in Activity<DamSetActivityAttributes>.activities where activity.attributes.sessionId == session.sessionId {
             if session.sessionStatus == .completed || session.sessionStatus == .cancelled {
-                await activity.end(content, dismissalPolicy: .default)
+                await activity.end(content, dismissalPolicy: .immediate)
             } else {
                 await activity.update(content)
             }
@@ -118,6 +122,37 @@ public enum WorkoutSessionSync {
     /// Applies every side effect a session mutation requires. Call after each
     /// engine operation, whether it ran in the app or in a Live Activity intent.
     public static func applyDidChange(_ session: WorkoutRoutineSession) async throws {
+        try await WorkoutSessionMutationGate.shared.apply(session)
+    }
+
+    /// Ends an in-progress workout without allowing an already-running Live
+    /// Activity intent to write its stale snapshot back after the clear.
+    public static func discardSession(sessionId: String) async throws {
+        try await WorkoutSessionMutationGate.shared.discard(sessionId: sessionId)
+    }
+
+    /// Saves the completed portion of a workout and closes the active session
+    /// as one coordinated terminal operation. The persisted session is read
+    /// inside the gate so a just-finished Lock Screen action is included.
+    public static func finishAndSaveCompletedSets(
+        fallbackSession: WorkoutRoutineSession,
+        store: LocalWorkoutStore
+    ) async throws -> WorkoutSummary {
+        try await WorkoutSessionMutationGate.shared.finishAndSaveCompletedSets(
+            fallbackSession: fallbackSession,
+            store: store
+        )
+    }
+
+    /// Persists an Undo-reopened session behind a temporary barrier. The app
+    /// gives it a fresh ID so the completed session's tombstone stays intact.
+    public static func reopenCompletedSession(_ session: WorkoutRoutineSession) async throws {
+        try await WorkoutSessionMutationGate.shared.reopenCompletedSession(session)
+    }
+
+    /// Persists before any ActivityKit await so the mutation actor keeps the
+    /// load/save boundary linearizable even though actor methods are reentrant.
+    fileprivate static func persistDidChange(_ session: WorkoutRoutineSession) throws {
         switch session.sessionStatus {
         case .completed:
             let summary = WorkoutEngine().summarize(session: session, endedAt: session.workoutEndTime ?? Date())
@@ -140,6 +175,147 @@ public enum WorkoutSessionSync {
                 RestCueScheduler.cancelPendingCues()
             }
         }
-        await updateLiveActivity(for: session)
+    }
+}
+
+private enum WorkoutSessionMutationError: Error {
+    case noCompletedSets
+    case conflictingActiveSession
+}
+
+/// Serializes terminal app actions with Live Activity writes. Actor methods
+/// can re-enter while ActivityKit is awaited, so a per-session barrier is set
+/// before any terminal persistence starts and rejects stale in-flight writes.
+private actor WorkoutSessionMutationGate {
+    static let shared = WorkoutSessionMutationGate()
+
+    private enum Barrier {
+        case completing
+        case completed
+        case reopening
+        case closed
+    }
+
+    private var barriers: [String: Barrier] = [:]
+
+    func apply(_ session: WorkoutRoutineSession) async throws {
+        guard barriers[session.sessionId] == nil else { return }
+
+        let isTerminal = session.sessionStatus == .completed || session.sessionStatus == .cancelled
+        if isTerminal {
+            barriers[session.sessionId] = .completing
+        }
+
+        do {
+            try WorkoutSessionSync.persistDidChange(session)
+        } catch {
+            if isTerminal, barriers[session.sessionId] == .completing {
+                barriers.removeValue(forKey: session.sessionId)
+            }
+            throw error
+        }
+
+        if session.sessionStatus == .completed {
+            if barriers[session.sessionId] == .completing {
+                barriers[session.sessionId] = .completed
+            }
+        } else if session.sessionStatus == .cancelled {
+            if barriers[session.sessionId] == .completing {
+                barriers[session.sessionId] = .closed
+            }
+        }
+        await WorkoutSessionSync.updateLiveActivity(for: session)
+    }
+
+    func discard(sessionId: String) async throws {
+        if barriers[sessionId] == .closed { return }
+        barriers[sessionId] = .closed
+
+        do {
+            if let stored = try WorkoutSessionSync.sessionStore.load(),
+               stored.sessionId != sessionId {
+                throw WorkoutSessionMutationError.conflictingActiveSession
+            }
+            try WorkoutSessionSync.sessionStore.clear()
+            RestCueScheduler.cancelPendingCues()
+            await WorkoutSessionSync.endAllLiveActivities()
+        } catch {
+            barriers.removeValue(forKey: sessionId)
+            throw error
+        }
+    }
+
+    func finishAndSaveCompletedSets(
+        fallbackSession: WorkoutRoutineSession,
+        store: LocalWorkoutStore
+    ) async throws -> WorkoutSummary {
+        let sessionId = fallbackSession.sessionId
+
+        switch barriers[sessionId] {
+        case .completing, .completed:
+            if let existing = try store.summary(sessionId: sessionId) {
+                return existing
+            }
+            if let canonical = try WorkoutSessionSync.summaryStore.summary(sessionId: sessionId) {
+                try store.save(canonical)
+                return canonical
+            }
+            throw WorkoutSessionMutationError.conflictingActiveSession
+        case .closed:
+            if let existing = try store.summary(sessionId: sessionId) {
+                return existing
+            }
+            throw WorkoutSessionMutationError.conflictingActiveSession
+        case .reopening:
+            throw WorkoutSessionMutationError.conflictingActiveSession
+        case nil:
+            break
+        }
+
+        barriers[sessionId] = .closed
+
+        var didSaveSummary = false
+        do {
+            let stored = try WorkoutSessionSync.sessionStore.load()
+            if let stored, stored.sessionId != sessionId {
+                throw WorkoutSessionMutationError.conflictingActiveSession
+            }
+            let latestSession = stored ?? fallbackSession
+            guard !latestSession.completedSets.isEmpty else {
+                throw WorkoutSessionMutationError.noCompletedSets
+            }
+
+            let summary = WorkoutEngine().summarize(session: latestSession, endedAt: Date())
+            try store.save(summary)
+            didSaveSummary = true
+            try WorkoutSessionSync.sessionStore.clear()
+            RestCueScheduler.cancelPendingCues()
+            await WorkoutSessionSync.endAllLiveActivities()
+            return summary
+        } catch {
+            if didSaveSummary {
+                try? store.delete(sessionId: sessionId)
+            }
+            barriers.removeValue(forKey: sessionId)
+            throw error
+        }
+    }
+
+    func reopenCompletedSession(_ session: WorkoutRoutineSession) async throws {
+        let previousBarrier = barriers[session.sessionId]
+        if previousBarrier == .closed || previousBarrier == .reopening {
+            throw WorkoutSessionMutationError.conflictingActiveSession
+        }
+        barriers[session.sessionId] = .reopening
+        do {
+            try WorkoutSessionSync.persistDidChange(session)
+        } catch {
+            barriers[session.sessionId] = previousBarrier ?? .completed
+            throw error
+        }
+        await WorkoutSessionSync.updateLiveActivity(for: session)
+        if barriers[session.sessionId] == .reopening {
+            barriers.removeValue(forKey: session.sessionId)
+        }
     }
 }

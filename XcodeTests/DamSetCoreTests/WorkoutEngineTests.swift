@@ -136,8 +136,150 @@ final class WorkoutEngineTests: XCTestCase {
 
         engine.addSessionScopedSet(session: &session, exerciseName: "Lateral Raise", targetWeight: 8, targetReps: 15, restDurationSeconds: 45)
 
-        XCTAssertEqual(session.plannedSets.last?.manuallyAdded, true)
+        XCTAssertEqual(session.plannedSets[1].exerciseName, "Lateral Raise")
+        XCTAssertEqual(session.plannedSets[1].manuallyAdded, true)
+        XCTAssertEqual(session.nextPlannedSet, session.plannedSets[1])
+        XCTAssertEqual(session.lockScreenState.totalPlannedSets, routine.plannedSets.count + 1)
         XCTAssertFalse(catalog.routines.flatMap(\.plannedSets).contains { $0.manuallyAdded })
+    }
+
+    func testSessionScopedSetInsertedAfterCurrentSetDuringRest() throws {
+        let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
+        let engine = WorkoutEngine()
+        var session = try engine.startSession(routine: routine)
+        try engine.completeCurrentSet(session: &session, now: Date(timeIntervalSince1970: 10))
+
+        engine.addSessionScopedSet(
+            session: &session,
+            exerciseName: "Cable Fly",
+            targetWeight: 20,
+            targetReps: 12,
+            restDurationSeconds: 60
+        )
+
+        XCTAssertEqual(session.currentSetIndex, 1)
+        XCTAssertEqual(session.currentPlannedSet?.setId, routine.plannedSets[0].setId)
+        XCTAssertEqual(session.nextPlannedSet?.exerciseName, "Cable Fly")
+        XCTAssertEqual(session.lockScreenState.totalPlannedSets, routine.plannedSets.count + 1)
+        XCTAssertEqual(session.sessionStatus, .resting)
+        XCTAssertEqual(session.lockScreenState.phase, .resting)
+    }
+
+    func testAddingSetAfterCompletedSessionReopensItReadyToAdvance() throws {
+        let routine = RoutineTemplate(
+            routineId: "one-set-add",
+            routineName: "One Set",
+            plannedSets: [
+                PlannedSet(setId: "only", exerciseName: "Squat", targetWeight: 100, targetReps: 5, restDurationSeconds: 60)
+            ]
+        )
+        let engine = WorkoutEngine()
+        var session = try engine.startSession(routine: routine)
+        try engine.completeCurrentSet(session: &session, now: Date(timeIntervalSince1970: 10))
+
+        engine.addSessionScopedSet(
+            session: &session,
+            exerciseName: "Back-off Squat",
+            targetWeight: 80,
+            targetReps: 8,
+            restDurationSeconds: 60
+        )
+
+        XCTAssertEqual(session.sessionStatus, .resting)
+        XCTAssertEqual(session.lockScreenState.phase, .readyForNextSet)
+        XCTAssertNil(session.workoutEndTime)
+        XCTAssertEqual(session.currentSetIndex, 1)
+        XCTAssertEqual(session.nextPlannedSet?.exerciseName, "Back-off Squat")
+        XCTAssertEqual(session.lockScreenState.totalPlannedSets, 2)
+
+        try engine.advanceToNextSet(session: &session)
+        XCTAssertEqual(session.currentSetIndex, 2)
+        XCTAssertEqual(session.currentPlannedSet?.exerciseName, "Back-off Squat")
+        XCTAssertEqual(session.lockScreenState.phase, .performingSet)
+    }
+
+    func testAdjustRestUsesWallClockRemainingAndUpdatesDeadline() throws {
+        let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
+        let engine = WorkoutEngine()
+        var session = try engine.startSession(routine: routine)
+        let completedAt = Date(timeIntervalSince1970: 100)
+        try engine.completeCurrentSet(session: &session, now: completedAt)
+
+        let adjustmentTime = Date(timeIntervalSince1970: 130)
+        try engine.adjustRest(session: &session, deltaSeconds: 30, now: adjustmentTime)
+
+        let expectedRemaining = routine.plannedSets[0].restDurationSeconds
+        XCTAssertEqual(session.lockScreenState.restRemainingSeconds, expectedRemaining)
+        XCTAssertEqual(
+            session.lockScreenState.resumeAt,
+            adjustmentTime.addingTimeInterval(TimeInterval(expectedRemaining))
+        )
+        XCTAssertEqual(session.lockScreenState.phase, .resting)
+    }
+
+    func testAdjustRestCanReachReadyAndAddTimeAgain() throws {
+        let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
+        let engine = WorkoutEngine()
+        var session = try engine.startSession(routine: routine)
+        let completedAt = Date(timeIntervalSince1970: 100)
+        try engine.completeCurrentSet(session: &session, now: completedAt)
+
+        let adjustmentTime = Date(timeIntervalSince1970: 130)
+        try engine.adjustRest(session: &session, deltaSeconds: -999, now: adjustmentTime)
+
+        XCTAssertEqual(session.lockScreenState.restRemainingSeconds, 0)
+        XCTAssertEqual(session.lockScreenState.resumeAt, adjustmentTime)
+        XCTAssertEqual(session.lockScreenState.phase, .readyForNextSet)
+
+        let extendedAt = Date(timeIntervalSince1970: 140)
+        try engine.adjustRest(session: &session, deltaSeconds: 30, now: extendedAt)
+
+        XCTAssertEqual(session.lockScreenState.restRemainingSeconds, 30)
+        XCTAssertEqual(session.lockScreenState.resumeAt, Date(timeIntervalSince1970: 170))
+        XCTAssertEqual(session.lockScreenState.phase, .resting)
+    }
+
+    func testUndoLastCompletedSetRestoresPerformingProgress() throws {
+        let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
+        let engine = WorkoutEngine()
+        var session = try engine.startSession(routine: routine)
+        try engine.adjustActualReps(session: &session, delta: -2)
+        try engine.adjustActualWeight(session: &session, delta: 2.5)
+        try engine.completeCurrentSet(session: &session, now: Date(timeIntervalSince1970: 10))
+
+        try engine.undoLastCompletedSet(session: &session)
+
+        XCTAssertTrue(session.completedSets.isEmpty)
+        XCTAssertEqual(session.sessionStatus, .active)
+        XCTAssertEqual(session.currentSetIndex, 1)
+        XCTAssertEqual(session.lockScreenState.phase, .performingSet)
+        XCTAssertEqual(session.lockScreenState.actualReps, routine.plannedSets[0].targetReps - 2)
+        XCTAssertEqual(session.lockScreenState.actualWeight, routine.plannedSets[0].targetWeight + 2.5)
+        XCTAssertTrue(session.lockScreenState.canCompleteSet)
+        XCTAssertNil(session.lockScreenState.resumeAt)
+    }
+
+    func testUndoOnlySetReopensCompletedSession() throws {
+        let routine = RoutineTemplate(
+            routineId: "one-set-undo",
+            routineName: "One Set",
+            plannedSets: [
+                PlannedSet(setId: "only", exerciseName: "Squat", targetWeight: 100, targetReps: 5, restDurationSeconds: 60)
+            ]
+        )
+        let engine = WorkoutEngine()
+        var session = try engine.startSession(routine: routine)
+        try engine.completeCurrentSet(session: &session, now: Date(timeIntervalSince1970: 10))
+
+        try engine.undoLastCompletedSet(session: &session)
+
+        XCTAssertEqual(session.sessionStatus, .active)
+        XCTAssertNil(session.workoutEndTime)
+        XCTAssertTrue(session.completedSets.isEmpty)
+        XCTAssertEqual(session.currentSetIndex, 1)
+        XCTAssertEqual(session.lockScreenState.phase, .performingSet)
+        XCTAssertEqual(session.lockScreenState.actualReps, 5)
+        XCTAssertEqual(session.lockScreenState.actualWeight, 100)
     }
 
     func testCompleteSetRecordsCanonicalActualWeight() throws {
@@ -196,6 +338,38 @@ final class WorkoutEngineTests: XCTestCase {
         let reloaded = FileWorkoutStore(fileURL: fileURL)
         XCTAssertEqual(try reloaded.summary(sessionId: "file-store"), summary)
         XCTAssertEqual(try reloaded.allSummaries().count, 1)
+    }
+
+    func testInMemoryWorkoutStoreDeleteRemovesOnlyMatchingSession() throws {
+        let first = try makeSummary(sessionId: "memory-first", endedAt: 10)
+        let second = try makeSummary(sessionId: "memory-second", endedAt: 20)
+        let store = InMemoryWorkoutStore()
+        try store.save(first)
+        try store.save(second)
+
+        try store.delete(sessionId: first.sessionId)
+
+        XCTAssertNil(try store.summary(sessionId: first.sessionId))
+        XCTAssertEqual(try store.summary(sessionId: second.sessionId), second)
+        XCTAssertEqual(try store.allSummaries(), [second])
+    }
+
+    func testFileWorkoutStoreDeletePersistsAndKeepsOtherSessions() throws {
+        let first = try makeSummary(sessionId: "file-first", endedAt: 10)
+        let second = try makeSummary(sessionId: "file-second", endedAt: 20)
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("damset-tests-delete-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let store = FileWorkoutStore(fileURL: fileURL)
+        try store.save(first)
+        try store.save(second)
+        try store.delete(sessionId: first.sessionId)
+
+        let reloaded = FileWorkoutStore(fileURL: fileURL)
+        XCTAssertNil(try reloaded.summary(sessionId: first.sessionId))
+        XCTAssertEqual(try reloaded.summary(sessionId: second.sessionId), second)
+        XCTAssertEqual(try reloaded.allSummaries(), [second])
     }
 
     func testRefreshMarksElapsedRestReadyWithoutAdvancing() throws {
@@ -309,5 +483,19 @@ final class WorkoutEngineTests: XCTestCase {
         } else {
             XCTFail("Expected fallback when playback is interrupted")
         }
+    }
+
+    private func makeSummary(sessionId: String, endedAt: TimeInterval) throws -> WorkoutSummary {
+        let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
+        let engine = WorkoutEngine()
+        let session = try engine.startSession(
+            routine: routine,
+            now: Date(timeIntervalSince1970: 0),
+            sessionId: sessionId
+        )
+        return engine.summarize(
+            session: session,
+            endedAt: Date(timeIntervalSince1970: endedAt)
+        )
     }
 }

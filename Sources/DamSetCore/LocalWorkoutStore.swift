@@ -2,6 +2,7 @@ import Foundation
 
 public protocol LocalWorkoutStore: Sendable {
     func save(_ summary: WorkoutSummary) throws
+    func delete(sessionId: String) throws
     func summary(sessionId: String) throws -> WorkoutSummary?
     func allSummaries() throws -> [WorkoutSummary]
 }
@@ -13,6 +14,10 @@ public final class InMemoryWorkoutStore: LocalWorkoutStore, @unchecked Sendable 
 
     public func save(_ summary: WorkoutSummary) throws {
         summaries[summary.sessionId] = summary
+    }
+
+    public func delete(sessionId: String) throws {
+        summaries.removeValue(forKey: sessionId)
     }
 
     public func summary(sessionId: String) throws -> WorkoutSummary? {
@@ -57,6 +62,14 @@ public final class FileWorkoutStore: LocalWorkoutStore, @unchecked Sendable {
             var summaries = existing ?? []
             summaries.removeAll { $0.sessionId == summary.sessionId }
             summaries.append(summary)
+            return summaries
+        }
+    }
+
+    public func delete(sessionId: String) throws {
+        try box.replace { existing in
+            var summaries = existing ?? []
+            summaries.removeAll { $0.sessionId == sessionId }
             return summaries
         }
     }

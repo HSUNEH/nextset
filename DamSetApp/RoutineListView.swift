@@ -29,6 +29,13 @@ struct RoutineListView: View {
                     viewModel.refreshFromSharedStore()
                 }
             }
+            .alert("Something went wrong", isPresented: errorIsPresented) {
+                Button("OK", role: .cancel) {
+                    viewModel.errorMessage = nil
+                }
+            } message: {
+                Text(viewModel.errorMessage ?? "Please try again.")
+            }
         }
         .tint(DamSetDesign.accent)
         .preferredColorScheme(.dark)
@@ -40,15 +47,42 @@ struct RoutineListView: View {
             SectionHeader(title: "Routines")
             VStack(spacing: 10) {
                 ForEach(viewModel.catalog.routines) { routine in
-                    NavigationLink {
-                        RoutineSetupView(routine: routine, viewModel: viewModel)
-                    } label: {
-                        RoutineRow(routine: routine)
+                    HStack(spacing: 10) {
+                        NavigationLink {
+                            RoutineSetupView(routine: routine, viewModel: viewModel)
+                        } label: {
+                            RoutineRow(routine: routine)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            viewModel.start(routine)
+                        } label: {
+                            Image(systemName: "bolt.fill")
+                                .font(.body.weight(.bold))
+                                .foregroundStyle(DamSetDesign.accent)
+                                .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(GymMetalControlButtonStyle(shape: .circle))
+                        .accessibilityLabel("Quick start \(routine.routineName)")
+                        .disabled(viewModel.activeSession != nil || viewModel.isBusy)
                     }
-                    .buttonStyle(.plain)
+                    .cardSurface()
                 }
             }
         }
+    }
+
+    private var errorIsPresented: Binding<Bool> {
+        Binding(
+            get: { viewModel.errorMessage != nil && viewModel.activeSession == nil },
+            set: { isPresented in
+                if !isPresented {
+                    viewModel.errorMessage = nil
+                }
+            }
+        )
     }
 
     private var historySection: some View {
@@ -125,7 +159,6 @@ private struct RoutineRow: View {
             }
         }
         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-        .cardSurface()
     }
 
     private var routineIcon: some View {

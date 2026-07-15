@@ -36,7 +36,7 @@ expect(session.currentSetIndex == 2, "advance moves to second set")
 expect(session.lockScreenState.phase == .performingSet, "next set returns to performing")
 
 engine.addSessionScopedSet(session: &session, exerciseName: "Lateral Raise", targetWeight: 8, targetReps: 15, restDurationSeconds: 45)
-expect(session.plannedSets.last?.manuallyAdded == true, "manual set is session-scoped")
+expect(session.nextPlannedSet?.manuallyAdded == true, "manual set is inserted after the current set")
 expect(!catalog.routines.flatMap(\.plannedSets).contains { $0.manuallyAdded }, "catalog is not mutated by manual set")
 
 let cue = engine.decideRestCue(playbackWasPlaying: true, playbackStillPlayingAfterCue: false, iOSPolicyAllowsIdealCue: true)

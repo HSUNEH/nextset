@@ -41,7 +41,11 @@ struct RoutineSetupView: View {
         .navigationTitle("Setup")
         .inlineNavigationTitle()
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button("Save") {
+                    saveAndDismiss()
+                }
+                .disabled(!canStart)
                 Button {
                     addSet()
                 } label: {
@@ -75,6 +79,10 @@ struct RoutineSetupView: View {
                 EditableSetCard(
                     set: $set,
                     canDelete: draftSets.count > 1,
+                    canMoveUp: draftSets.first?.id != set.id,
+                    canMoveDown: draftSets.last?.id != set.id,
+                    moveUp: { move(set, by: -1) },
+                    moveDown: { move(set, by: 1) },
                     duplicate: { duplicate(set) },
                     delete: { delete(set) }
                 )
@@ -102,8 +110,7 @@ struct RoutineSetupView: View {
 
     private var startButton: some View {
         Button {
-            viewModel.start(makeRoutine())
-            dismiss()
+            saveAndStart()
         } label: {
             Text("Start Workout")
                 .font(.headline)
@@ -133,7 +140,8 @@ struct RoutineSetupView: View {
             .enumerated()
             .map { index, set in
                 PlannedSet(
-                    setId: "\(routine.routineId)-setup-\(index + 1)-\(set.id.uuidString)",
+                    setId: set.sourceSetId
+                        ?? "\(routine.routineId)-setup-\(index + 1)-\(set.id.uuidString)",
                     exerciseName: set.exerciseName.trimmingCharacters(in: .whitespacesAndNewlines),
                     targetWeight: set.targetWeight,
                     targetReps: set.targetReps,
@@ -143,10 +151,22 @@ struct RoutineSetupView: View {
             }
 
         return RoutineTemplate(
-            routineId: "\(routine.routineId)-custom-\(UUID().uuidString)",
+            routineId: routine.routineId,
             routineName: draftName.trimmingCharacters(in: .whitespacesAndNewlines),
             plannedSets: validSets
         )
+    }
+
+    private func saveAndDismiss() {
+        guard viewModel.saveRoutine(makeRoutine()) else { return }
+        dismiss()
+    }
+
+    private func saveAndStart() {
+        let editedRoutine = makeRoutine()
+        guard viewModel.saveRoutine(editedRoutine) else { return }
+        viewModel.start(editedRoutine)
+        dismiss()
     }
 
     private func addSet() {
@@ -160,8 +180,19 @@ struct RoutineSetupView: View {
     private func duplicate(_ set: EditablePlannedSet) {
         var copy = set
         copy.id = UUID()
+        copy.sourceSetId = nil
         copy.manuallyAdded = true
         draftSets.append(copy)
+    }
+
+    private func move(_ set: EditablePlannedSet, by offset: Int) {
+        guard let sourceIndex = draftSets.firstIndex(where: { $0.id == set.id }) else { return }
+        let destinationIndex = sourceIndex + offset
+        guard draftSets.indices.contains(destinationIndex) else { return }
+
+        withAnimation(.snappy) {
+            draftSets.swapAt(sourceIndex, destinationIndex)
+        }
     }
 
     private func delete(_ set: EditablePlannedSet) {
@@ -173,6 +204,10 @@ struct RoutineSetupView: View {
 private struct EditableSetCard: View {
     @Binding var set: EditablePlannedSet
     let canDelete: Bool
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let moveUp: () -> Void
+    let moveDown: () -> Void
     let duplicate: () -> Void
     let delete: () -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -186,9 +221,17 @@ private struct EditableSetCard: View {
                     .tint(DamSetDesign.accent)
                 Spacer()
                 Menu {
-                    Button("Duplicate", systemImage: "plus.square.on.square") { duplicate() }
-                    Button("Delete", systemImage: "trash", role: .destructive) { delete() }
-                        .disabled(!canDelete)
+                    Section {
+                        Button("Move Up", systemImage: "arrow.up") { moveUp() }
+                            .disabled(!canMoveUp)
+                        Button("Move Down", systemImage: "arrow.down") { moveDown() }
+                            .disabled(!canMoveDown)
+                    }
+                    Section {
+                        Button("Duplicate", systemImage: "plus.square.on.square") { duplicate() }
+                        Button("Delete", systemImage: "trash", role: .destructive) { delete() }
+                            .disabled(!canDelete)
+                    }
                 } label: {
                         Image(systemName: "ellipsis")
                             .font(.subheadline.weight(.semibold))
@@ -207,21 +250,24 @@ private struct EditableSetCard: View {
                     title: "kg",
                     value: weightText,
                     decrement: { set.targetWeight = max(0, set.targetWeight - 2.5) },
-                    increment: { set.targetWeight += 2.5 }
+                    increment: { set.targetWeight += 2.5 },
+                    directEntry: updateWeight
                 )
                 Divider().overlay(DamSetDesign.steelMuted)
                 StepperField(
                     title: "reps",
                     value: "\(set.targetReps)",
                     decrement: { set.targetReps = max(0, set.targetReps - 1) },
-                    increment: { set.targetReps += 1 }
+                    increment: { set.targetReps += 1 },
+                    directEntry: updateReps
                 )
                 Divider().overlay(DamSetDesign.steelMuted)
                 StepperField(
                     title: "rest",
                     value: set.restSeconds.minuteSecondText,
                     decrement: { set.restSeconds = max(0, set.restSeconds - 15) },
-                    increment: { set.restSeconds += 15 }
+                    increment: { set.restSeconds += 15 },
+                    directEntry: updateRest
                 )
             } else {
                 HStack(spacing: 0) {
@@ -229,7 +275,8 @@ private struct EditableSetCard: View {
                         title: "kg",
                         value: weightText,
                         decrement: { set.targetWeight = max(0, set.targetWeight - 2.5) },
-                        increment: { set.targetWeight += 2.5 }
+                        increment: { set.targetWeight += 2.5 },
+                        directEntry: updateWeight
                     )
                     Divider()
                         .overlay(DamSetDesign.steelMuted)
@@ -238,7 +285,8 @@ private struct EditableSetCard: View {
                         title: "reps",
                         value: "\(set.targetReps)",
                         decrement: { set.targetReps = max(0, set.targetReps - 1) },
-                        increment: { set.targetReps += 1 }
+                        increment: { set.targetReps += 1 },
+                        directEntry: updateReps
                     )
                     Divider()
                         .overlay(DamSetDesign.steelMuted)
@@ -247,7 +295,8 @@ private struct EditableSetCard: View {
                         title: "rest",
                         value: set.restSeconds.minuteSecondText,
                         decrement: { set.restSeconds = max(0, set.restSeconds - 15) },
-                        increment: { set.restSeconds += 15 }
+                        increment: { set.restSeconds += 15 },
+                        directEntry: updateRest
                     )
                 }
             }
@@ -259,6 +308,40 @@ private struct EditableSetCard: View {
     private var weightText: String {
         "\(set.targetWeight.formatted(.number.precision(.fractionLength(0...1))))"
     }
+
+    private func updateWeight(_ rawValue: String) {
+        guard let value = parsedWeight(rawValue), value.isFinite else { return }
+        set.targetWeight = min(9_999, max(0, value))
+    }
+
+    private func parsedWeight(_ rawValue: String) -> Double? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let formatter = NumberFormatter()
+        formatter.locale = .current
+        formatter.numberStyle = .decimal
+        if let number = formatter.number(from: trimmed) {
+            return number.doubleValue
+        }
+        return Double(trimmed.replacingOccurrences(of: ",", with: "."))
+    }
+
+    private func updateReps(_ rawValue: String) {
+        guard let value = Int(rawValue.trimmingCharacters(in: .whitespacesAndNewlines)) else { return }
+        set.targetReps = min(999, max(0, value))
+    }
+
+    private func updateRest(_ rawValue: String) {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = trimmed.split(separator: ":", omittingEmptySubsequences: false)
+        let seconds: Int?
+        if parts.count == 2, let minutes = Int(parts[0]), let remainder = Int(parts[1]) {
+            seconds = min(max(0, minutes), 1_440) * 60 + min(max(0, remainder), 59)
+        } else {
+            seconds = Int(trimmed)
+        }
+        guard let seconds else { return }
+        set.restSeconds = min(86_400, max(0, seconds))
+    }
 }
 
 private struct StepperField: View {
@@ -266,24 +349,73 @@ private struct StepperField: View {
     let value: String
     let decrement: () -> Void
     let increment: () -> Void
+    let directEntry: (String) -> Void
+    @State private var showsDirectEntry = false
+    @State private var draftValue = ""
 
     var body: some View {
         VStack(spacing: 7) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title3.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            Button {
+                draftValue = value
+                showsDirectEntry = true
+            } label: {
+                Text(value)
+                    .font(.title3.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(minHeight: 30)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+            .accessibilityLabel("\(title) \(value)")
+            .accessibilityHint("Enter a value directly")
             HStack(spacing: 0) {
                 stepButton(symbol: "minus", action: decrement)
                 stepButton(symbol: "plus", action: increment)
             }
         }
         .frame(maxWidth: .infinity)
+        .alert("Edit \(title)", isPresented: $showsDirectEntry) {
+            TextField(value, text: $draftValue)
+            Button("Save") { directEntry(draftValue) }
+                .disabled(!isValidDraft)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(title == "rest" ? "Enter seconds or mm:ss." : "Enter a number.")
+        }
+    }
+
+    private var isValidDraft: Bool {
+        let trimmed = draftValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch title {
+        case "kg":
+            let formatter = NumberFormatter()
+            formatter.locale = .current
+            formatter.numberStyle = .decimal
+            if let value = formatter.number(from: trimmed)?.doubleValue {
+                return value.isFinite && value >= 0
+            }
+            let normalized = trimmed.replacingOccurrences(of: ",", with: ".")
+            return Double(normalized).map { $0.isFinite && $0 >= 0 } ?? false
+        case "reps":
+            return Int(trimmed).map { $0 >= 0 } ?? false
+        case "rest":
+            let parts = trimmed.split(separator: ":", omittingEmptySubsequences: false)
+            if parts.count == 2,
+               let minutes = Int(parts[0]),
+               let seconds = Int(parts[1]) {
+                return minutes >= 0 && (0...59).contains(seconds)
+            }
+            return Int(trimmed).map { $0 >= 0 } ?? false
+        default:
+            return false
+        }
     }
 
     private func stepButton(symbol: String, action: @escaping () -> Void) -> some View {
@@ -294,12 +426,14 @@ private struct StepperField: View {
                 .frame(width: 44, height: 44)
         }
         .buttonStyle(GymCompactStepperButtonStyle())
+        .buttonRepeatBehavior(.enabled)
         .accessibilityLabel("\(symbol == "minus" ? "Decrease" : "Increase") \(title)")
     }
 }
 
 private struct EditablePlannedSet: Identifiable, Equatable {
     var id: UUID
+    var sourceSetId: String?
     var exerciseName: String
     var targetWeight: Double
     var targetReps: Int
@@ -308,6 +442,7 @@ private struct EditablePlannedSet: Identifiable, Equatable {
 
     init(
         id: UUID = UUID(),
+        sourceSetId: String? = nil,
         exerciseName: String = "New Exercise",
         targetWeight: Double = 20,
         targetReps: Int = 8,
@@ -315,6 +450,7 @@ private struct EditablePlannedSet: Identifiable, Equatable {
         manuallyAdded: Bool = true
     ) {
         self.id = id
+        self.sourceSetId = sourceSetId
         self.exerciseName = exerciseName
         self.targetWeight = max(0, targetWeight)
         self.targetReps = max(0, targetReps)
@@ -324,6 +460,7 @@ private struct EditablePlannedSet: Identifiable, Equatable {
 
     init(planned: PlannedSet) {
         self.init(
+            sourceSetId: planned.setId,
             exerciseName: planned.exerciseName,
             targetWeight: planned.targetWeight,
             targetReps: planned.targetReps,

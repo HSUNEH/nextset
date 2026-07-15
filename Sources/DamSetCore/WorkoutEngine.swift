@@ -121,11 +121,45 @@ public struct WorkoutEngine: Sendable {
 
     public func updateRest(session: inout WorkoutRoutineSession, now: Date = Date()) {
         guard session.sessionStatus == .resting, let resumeAt = session.lockScreenState.resumeAt else { return }
-        let remaining = max(0, Int(ceil(resumeAt.timeIntervalSince(now))))
+        let remaining = restRemainingSeconds(until: resumeAt, now: now)
         session.lockScreenState.restRemainingSeconds = remaining
         if remaining == 0 {
             session.lockScreenState.phase = .readyForNextSet
         }
+    }
+
+    /// Changes the wall-clock rest deadline while keeping the rendered
+    /// countdown and phase derived from that deadline. This also lets a user
+    /// add time after the countdown has reached the ready state.
+    public func adjustRest(
+        session: inout WorkoutRoutineSession,
+        deltaSeconds: Int,
+        now: Date = Date()
+    ) throws {
+        guard session.sessionStatus == .resting,
+              session.lockScreenState.phase == .resting
+                || session.lockScreenState.phase == .readyForNextSet else {
+            throw WorkoutEngineError.invalidTransition
+        }
+
+        let currentRemaining: Int
+        if let resumeAt = session.lockScreenState.resumeAt {
+            currentRemaining = restRemainingSeconds(until: resumeAt, now: now)
+        } else {
+            currentRemaining = max(0, session.lockScreenState.restRemainingSeconds)
+        }
+
+        let (unclampedRemaining, overflowed) = currentRemaining.addingReportingOverflow(deltaSeconds)
+        let adjustedRemaining: Int
+        if overflowed {
+            adjustedRemaining = deltaSeconds > 0 ? Int.max : 0
+        } else {
+            adjustedRemaining = max(0, unclampedRemaining)
+        }
+
+        session.lockScreenState.restRemainingSeconds = adjustedRemaining
+        session.lockScreenState.resumeAt = now.addingTimeInterval(TimeInterval(adjustedRemaining))
+        session.lockScreenState.phase = adjustedRemaining == 0 ? .readyForNextSet : .resting
     }
 
     /// Brings the wall-clock countdown up to date without changing sets. The
@@ -147,6 +181,37 @@ public struct WorkoutEngine: Sendable {
         session.lockScreenState = .performing(nextSet, setIndex: nextIndex, totalSets: session.plannedSets.count)
     }
 
+    /// Reopens the set that was just completed, preserving the recorded reps
+    /// and weight so an accidental completion can be corrected without loss.
+    public func undoLastCompletedSet(session: inout WorkoutRoutineSession) throws {
+        let canUndoDuringRest = session.sessionStatus == .resting
+            && (session.lockScreenState.phase == .resting
+                || session.lockScreenState.phase == .readyForNextSet)
+        let canUndoCompletedSession = session.sessionStatus == .completed
+            && session.lockScreenState.phase == .completed
+        guard canUndoDuringRest || canUndoCompletedSession else {
+            throw WorkoutEngineError.invalidTransition
+        }
+        guard let planned = session.currentPlannedSet,
+              let completed = session.completedSets.last else {
+            throw WorkoutEngineError.noActiveSet
+        }
+        guard completed.setId == planned.setId else {
+            throw WorkoutEngineError.invalidTransition
+        }
+
+        session.completedSets.removeLast()
+        session.sessionStatus = .active
+        session.workoutEndTime = nil
+        session.lockScreenState = .performing(
+            planned,
+            setIndex: session.currentSetIndex,
+            totalSets: session.plannedSets.count
+        )
+        session.lockScreenState.actualReps = completed.actualReps
+        session.lockScreenState.actualWeight = completed.actualWeight
+    }
+
     public func addSessionScopedSet(session: inout WorkoutRoutineSession, exerciseName: String, targetWeight: Double, targetReps: Int, restDurationSeconds: Int) {
         let planned = PlannedSet(
             setId: "manual-\(UUID().uuidString)",
@@ -156,8 +221,26 @@ public struct WorkoutEngine: Sendable {
             restDurationSeconds: restDurationSeconds,
             manuallyAdded: true
         )
-        session.plannedSets.append(planned)
+        let insertionIndex: Int
+        if session.plannedSets.indices.contains(session.currentSetIndex - 1) {
+            insertionIndex = session.currentSetIndex
+        } else {
+            insertionIndex = session.plannedSets.endIndex
+        }
+        session.plannedSets.insert(planned, at: insertionIndex)
         session.lockScreenState.totalPlannedSets = session.plannedSets.count
+
+        // A set added immediately after completing the original last set makes
+        // that session actionable again. Treat it as a zero-second rest so the
+        // existing next-set transition remains the single way to advance.
+        if session.sessionStatus == .completed {
+            session.sessionStatus = .resting
+            session.workoutEndTime = nil
+            session.lockScreenState.canCompleteSet = false
+            session.lockScreenState.restRemainingSeconds = 0
+            session.lockScreenState.resumeAt = nil
+            session.lockScreenState.phase = .readyForNextSet
+        }
     }
 
     public func summarize(session: WorkoutRoutineSession, endedAt: Date = Date()) -> WorkoutSummary {
@@ -183,5 +266,11 @@ public struct WorkoutEngine: Sendable {
         guard isPerforming || isCorrectingCompletedSet else {
             throw WorkoutEngineError.invalidTransition
         }
+    }
+
+    private func restRemainingSeconds(until resumeAt: Date, now: Date) -> Int {
+        let interval = max(0, resumeAt.timeIntervalSince(now))
+        guard interval < Double(Int.max) else { return Int.max }
+        return Int(ceil(interval))
     }
 }

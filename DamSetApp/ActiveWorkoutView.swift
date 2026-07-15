@@ -1,12 +1,18 @@
 import SwiftUI
 import Combine
 import DamSetCore
+#if os(iOS)
+import UIKit
+#endif
 
 struct ActiveWorkoutView: View {
     @Bindable var viewModel: WorkoutViewModel
     @State private var showEndConfirmation = false
     @State private var showRestCorrection = false
+    @State private var progressEntryField: ProgressEntryField?
+    @State private var progressEntryDraft = ""
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
     @ScaledMetric(relativeTo: .largeTitle) private var exerciseTitleSize: CGFloat = 38
     @ScaledMetric(relativeTo: .largeTitle) private var targetNumberSize: CGFloat = 64
     @ScaledMetric(relativeTo: .title) private var actualNumberSize: CGFloat = 44
@@ -54,21 +60,39 @@ struct ActiveWorkoutView: View {
                             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                     }
                     .buttonStyle(GymMetalControlButtonStyle(shape: .circle))
-                    .accessibilityLabel("Add Set")
+                    .accessibilityLabel("Repeat current set next")
                     .disabled(
                         viewModel.activeSession?.sessionStatus == .completed
                             || viewModel.isBusy
                     )
                 }
             }
-            .confirmationDialog("End workout without saving?", isPresented: $showEndConfirmation, titleVisibility: .visible) {
-                Button("End Workout", role: .destructive) { viewModel.closeWorkout() }
+            .confirmationDialog("Finish workout?", isPresented: $showEndConfirmation, titleVisibility: .visible) {
+                if !(viewModel.activeSession?.completedSets.isEmpty ?? true) {
+                    Button("Save Completed Sets") { viewModel.finishAndSaveWorkout() }
+                }
+                Button("Discard Workout", role: .destructive) { viewModel.closeWorkout() }
                 Button("Keep Going", role: .cancel) {}
+            } message: {
+                let count = viewModel.activeSession?.completedSets.count ?? 0
+                Text(count == 0 ? "No sets have been completed." : "\(count) completed sets can be saved to History.")
             }
         }
         .tint(DamSetDesign.accent)
         .onReceive(restTimer) { now in
             viewModel.tick(now: now)
+        }
+        .onAppear { updateIdleTimer() }
+        .onChange(of: scenePhase) { _, _ in updateIdleTimer() }
+        .onChange(of: viewModel.activeSession?.sessionStatus) { _, _ in updateIdleTimer() }
+        .onDisappear { setIdleTimerDisabled(false) }
+        .alert(progressEntryField?.title ?? "Edit value", isPresented: progressEntryIsPresented) {
+            TextField(progressEntryField?.placeholder ?? "", text: $progressEntryDraft)
+            Button("Save") { commitProgressEntry() }
+                .disabled(!progressEntryIsValid)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(progressEntryField?.message ?? "Enter a number.")
         }
         .alert("Something went wrong", isPresented: errorIsPresented) {
             Button("OK", role: .cancel) {
@@ -128,7 +152,8 @@ struct ActiveWorkoutView: View {
                     .padding(.top, 16)
                     .padding(.bottom, 8)
                     .background {
-                        DamSetDesign.chromeBackground.opacity(0.98)
+                        DamSetDesign.chromeBackground
+                            .ignoresSafeArea(edges: .bottom)
                             .overlay(alignment: .top) {
                                 Rectangle()
                                     .fill(DamSetDesign.steelGradient)
@@ -340,7 +365,7 @@ struct ActiveWorkoutView: View {
     }
 
     private func restCorrectionPanel(_ session: WorkoutRoutineSession) -> some View {
-        Group {
+        VStack(spacing: 16) {
             if dynamicTypeSize.isAccessibilitySize {
                 DisclosureGroup(isExpanded: $showRestCorrection) {
                     VStack(spacing: 18) {
@@ -365,6 +390,10 @@ struct ActiveWorkoutView: View {
                     weightEditor(session)
                 }
             }
+
+            Divider()
+                .overlay(DamSetDesign.steelMuted.opacity(0.7))
+            undoSetButton
         }
         .gymPanel(accent: DamSetDesign.accent.opacity(0.76), cut: 16)
     }
@@ -397,22 +426,27 @@ struct ActiveWorkoutView: View {
     }
 
     private func repsValue(_ session: WorkoutRoutineSession) -> some View {
-        VStack(spacing: 2) {
-            Text(session.lockScreenState.phase == .performingSet ? "Actual reps" : "Last set reps")
-                .font(.caption.weight(.semibold))
-                .textCase(.uppercase)
-                .tracking(1)
-                .foregroundStyle(DamSetDesign.accent)
-            Text("\(session.lockScreenState.actualReps)")
-                .font(.system(size: min(actualNumberSize, 52), weight: .black, design: .default))
-                .fontWidth(.condensed)
-                .foregroundStyle(DamSetDesign.accent)
-                .monospacedDigit()
-                .contentTransition(.numericText())
-                .accessibilityLabel("Actual reps")
-                .accessibilityValue("\(session.lockScreenState.actualReps)")
+        Button {
+            beginProgressEntry(.reps, value: String(session.lockScreenState.actualReps))
+        } label: {
+            VStack(spacing: 2) {
+                Text(session.lockScreenState.phase == .performingSet ? "Actual reps" : "Last set reps")
+                    .font(.caption.weight(.semibold))
+                    .textCase(.uppercase)
+                    .tracking(1)
+                    .foregroundStyle(DamSetDesign.accent)
+                Text("\(session.lockScreenState.actualReps)")
+                    .font(.system(size: min(actualNumberSize, 52), weight: .black, design: .default))
+                    .fontWidth(.condensed)
+                    .foregroundStyle(DamSetDesign.accent)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+            .frame(minWidth: 84)
         }
-        .frame(minWidth: 84)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Actual reps, \(session.lockScreenState.actualReps)")
+        .accessibilityHint("Enter actual reps directly")
     }
 
     private func repsButton(
@@ -424,25 +458,34 @@ struct ActiveWorkoutView: View {
         GlassCircleControl(symbol: symbol, label: label) {
             viewModel.adjustReps(delta)
         }
+        .buttonRepeatBehavior(.enabled)
         .disabled(disabled || viewModel.isBusy)
     }
 
     private func weightValue(_ session: WorkoutRoutineSession) -> some View {
-        VStack(spacing: 2) {
-            Text(session.lockScreenState.phase == .performingSet ? "Actual weight" : "Last set weight")
-                .font(.caption.weight(.semibold))
-                .textCase(.uppercase)
-                .tracking(1)
-                .foregroundStyle(.secondary)
-            Text("\(session.lockScreenState.actualWeight.formatted()) kg")
-                .font(.title3.weight(.semibold))
-                .fontWidth(.condensed)
-                .foregroundStyle(DamSetDesign.steel)
-                .monospacedDigit()
-                .accessibilityLabel("Actual weight")
-                .accessibilityValue("\(session.lockScreenState.actualWeight.formatted()) kilograms")
+        Button {
+            beginProgressEntry(
+                .weight,
+                value: String(session.lockScreenState.actualWeight)
+            )
+        } label: {
+            VStack(spacing: 2) {
+                Text(session.lockScreenState.phase == .performingSet ? "Actual weight" : "Last set weight")
+                    .font(.caption.weight(.semibold))
+                    .textCase(.uppercase)
+                    .tracking(1)
+                    .foregroundStyle(.secondary)
+                Text("\(session.lockScreenState.actualWeight.formatted()) kg")
+                    .font(.title3.weight(.semibold))
+                    .fontWidth(.condensed)
+                    .foregroundStyle(DamSetDesign.steel)
+                    .monospacedDigit()
+            }
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Actual weight, \(session.lockScreenState.actualWeight.formatted()) kilograms")
+        .accessibilityHint("Enter actual weight directly")
     }
 
     private func weightButton(delta: Double, disabled: Bool = false) -> some View {
@@ -457,6 +500,7 @@ struct ActiveWorkoutView: View {
                 .frame(minWidth: 64, minHeight: 48)
         }
         .buttonStyle(GymMetalControlButtonStyle())
+        .buttonRepeatBehavior(.enabled)
         .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil)
         .disabled(disabled || viewModel.isBusy)
         .accessibilityLabel(
@@ -531,6 +575,12 @@ struct ActiveWorkoutView: View {
                 .foregroundStyle(stateColor)
                 .monospacedDigit()
                 .contentTransition(.numericText())
+
+            HStack(spacing: 12) {
+                restAdjustmentButton(seconds: -30, disabled: state.restRemainingSeconds == 0)
+                restAdjustmentButton(seconds: 30)
+            }
+
             if let resumeAt = state.resumeAt, state.phase == .resting {
                 Text("Ready at \(resumeAt.formatted(date: .omitted, time: .shortened))")
                     .font(.subheadline)
@@ -563,6 +613,7 @@ struct ActiveWorkoutView: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
+            undoSetButton
             Button { viewModel.closeWorkout() } label: {
                 Text("Done")
                     .font(.headline)
@@ -572,6 +623,7 @@ struct ActiveWorkoutView: View {
                     .frame(minWidth: 140, minHeight: 36)
             }
             .buttonStyle(GymPrimaryButtonStyle())
+            .disabled(viewModel.isBusy)
         }
         .frame(maxWidth: .infinity)
         .gymPanel(accent: DamSetDesign.moss.opacity(0.70), cut: 16)
@@ -636,6 +688,118 @@ struct ActiveWorkoutView: View {
     private func nextSetCaption(for session: WorkoutRoutineSession) -> String {
         guard let next = session.nextPlannedSet else { return "finish" }
         return "\(next.targetWeight.formatted()) kg × \(next.targetReps)"
+    }
+
+    private var progressEntryIsPresented: Binding<Bool> {
+        Binding(
+            get: { progressEntryField != nil },
+            set: { isPresented in
+                if !isPresented {
+                    progressEntryField = nil
+                }
+            }
+        )
+    }
+
+    private func beginProgressEntry(_ field: ProgressEntryField, value: String) {
+        progressEntryDraft = value
+        progressEntryField = field
+    }
+
+    private func commitProgressEntry() {
+        let rawValue = progressEntryDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch progressEntryField {
+        case .reps:
+            guard let value = Int(rawValue), value >= 0 else { return }
+            viewModel.setReps(min(value, 999))
+        case .weight:
+            let normalized = rawValue.replacingOccurrences(of: ",", with: ".")
+            guard let value = Double(normalized), value.isFinite, value >= 0 else { return }
+            viewModel.setWeight(min(value, 9_999))
+        case nil:
+            return
+        }
+        progressEntryField = nil
+    }
+
+    private var progressEntryIsValid: Bool {
+        let rawValue = progressEntryDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch progressEntryField {
+        case .reps:
+            return Int(rawValue).map { $0 >= 0 } ?? false
+        case .weight:
+            let normalized = rawValue.replacingOccurrences(of: ",", with: ".")
+            return Double(normalized).map { $0.isFinite && $0 >= 0 } ?? false
+        case nil:
+            return false
+        }
+    }
+
+    private func restAdjustmentButton(seconds: Int, disabled: Bool = false) -> some View {
+        Button {
+            viewModel.adjustRest(seconds)
+        } label: {
+            Text(seconds < 0 ? "−30 sec" : "+30 sec")
+                .font(.subheadline.weight(.semibold))
+                .monospacedDigit()
+                .frame(minWidth: 86, minHeight: 44)
+        }
+        .buttonStyle(GymMetalControlButtonStyle())
+        .buttonRepeatBehavior(.enabled)
+        .disabled(disabled || viewModel.isBusy)
+        .accessibilityLabel(seconds < 0 ? "Reduce rest by 30 seconds" : "Add 30 seconds to rest")
+    }
+
+    private var undoSetButton: some View {
+        Button {
+            viewModel.undoLastCompletedSet()
+        } label: {
+            Label("Undo Set Done", systemImage: "arrow.uturn.backward")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(GymMetalControlButtonStyle())
+        .disabled(viewModel.isBusy)
+        .accessibilityHint("Restores the last completed set with its reps and weight")
+    }
+
+    private func updateIdleTimer() {
+        let status = viewModel.activeSession?.sessionStatus
+        let shouldDisable = scenePhase == ScenePhase.active
+            && (status == .active || status == .resting)
+        setIdleTimerDisabled(shouldDisable)
+    }
+
+    private func setIdleTimerDisabled(_ disabled: Bool) {
+        #if os(iOS)
+        UIApplication.shared.isIdleTimerDisabled = disabled
+        #endif
+    }
+}
+
+private enum ProgressEntryField {
+    case reps
+    case weight
+
+    var title: String {
+        switch self {
+        case .reps: "Edit reps"
+        case .weight: "Edit weight"
+        }
+    }
+
+    var placeholder: String {
+        switch self {
+        case .reps: "Reps"
+        case .weight: "Kilograms"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .reps: "Enter the reps completed."
+        case .weight: "Enter the weight in kilograms."
+        }
     }
 }
 
