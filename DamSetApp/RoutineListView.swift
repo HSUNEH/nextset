@@ -18,7 +18,11 @@ struct RoutineListView: View {
                 }
 
             NavigationStack {
-                WorkoutHistoryCalendarView(summaries: viewModel.savedSummaries)
+                WorkoutHistoryCalendarView(
+                    summaries: viewModel.savedSummaries,
+                    onUpdate: viewModel.updateWorkoutSummary,
+                    onDelete: viewModel.deleteWorkoutSummary
+                )
             }
             .gymNavigationChrome()
             .tabItem {
@@ -397,11 +401,40 @@ private struct HistoryRow: View {
 }
 
 struct WorkoutSummaryDetailView: View {
-    let summary: WorkoutSummary
+    @State private var summary: WorkoutSummary
+    let allSummaries: [WorkoutSummary]
+    let onUpdate: (WorkoutSummary) -> Bool
+    let onDelete: (WorkoutSummary) -> Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.dismiss) private var dismiss
+    @State private var showsEditor = false
+    @State private var showsDeleteConfirmation = false
+
+    init(
+        summary: WorkoutSummary,
+        allSummaries: [WorkoutSummary] = [],
+        onUpdate: @escaping (WorkoutSummary) -> Bool = { _ in false },
+        onDelete: @escaping (WorkoutSummary) -> Bool = { _ in false }
+    ) {
+        _summary = State(initialValue: summary)
+        self.allSummaries = allSummaries
+        self.onUpdate = onUpdate
+        self.onDelete = onDelete
+    }
 
     var body: some View {
         List {
+            if !summary.completedSets.isEmpty {
+                Section("Progress") {
+                    WorkoutProgressChartView(
+                        selectedSummary: summary,
+                        allSummaries: chartSummaries
+                    )
+                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 12, trailing: 12))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+            }
             Section("Sets") {
                 ForEach(Array(summary.completedSets.enumerated()), id: \.offset) { index, set in
                     Group {
@@ -433,15 +466,60 @@ struct WorkoutSummaryDetailView: View {
                 LabeledContent("Ended", value: summary.workoutEndTime.formatted(date: .abbreviated, time: .shortened))
             }
             .listRowBackground(DamSetDesign.surface)
+
+            Section {
+                Button(role: .destructive) {
+                    showsDeleteConfirmation = true
+                } label: {
+                    Label("Delete Workout", systemImage: "trash")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+            }
+            .listRowBackground(DamSetDesign.surface)
         }
         .scrollContentBackground(.hidden)
         .background(DamSetDesign.screenBackground)
         .listSectionSeparatorTint(DamSetDesign.steelMuted)
         .navigationTitle(summary.routineName)
         .inlineNavigationTitle()
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showsEditor = true
+                } label: {
+                    Label("Edit Record", systemImage: "pencil")
+                }
+            }
+        }
+        .sheet(isPresented: $showsEditor) {
+            WorkoutRecordEditView(summary: summary) { updatedSummary in
+                guard onUpdate(updatedSummary) else { return false }
+                summary = updatedSummary
+                return true
+            }
+        }
+        .confirmationDialog(
+            "Delete this workout?",
+            isPresented: $showsDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Workout", role: .destructive) {
+                guard onDelete(summary) else { return }
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "\(summary.routineName) · \(summary.workoutEndTime.formatted(date: .abbreviated, time: .shortened)) · \(summary.totalSets) sets. Its progress points will also be removed."
+            )
+        }
         .tint(DamSetDesign.accent)
         .preferredColorScheme(.dark)
         .gymNavigationChrome()
+    }
+
+    private var chartSummaries: [WorkoutSummary] {
+        allSummaries.filter { $0.sessionId != summary.sessionId } + [summary]
     }
 
     private func completedSetIdentity(index: Int, set: CompletedSet) -> some View {

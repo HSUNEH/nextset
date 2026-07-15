@@ -1,40 +1,91 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
+
+private struct JSONFileLockError: Error, CustomStringConvertible {
+    let operation: String
+    let path: String
+    let code: Int32
+
+    var description: String {
+        "Could not \(operation) file lock at \(path) (errno \(code))"
+    }
+}
 
 /// Lock-guarded ISO-8601 JSON persistence for one Codable value at a fixed
-/// file URL. The workout stores wrap this so the locking, directory creation,
-/// and coder configuration live in one place.
+/// file URL. An in-process lock protects each instance while a sidecar POSIX
+/// lock serializes access across instances and processes sharing the same URL.
 final class JSONFileBox<Value: Codable>: @unchecked Sendable {
     private let fileURL: URL
+    private let lockFileURL: URL
     private let lock = NSLock()
 
     init(fileURL: URL) {
-        self.fileURL = fileURL
+        let standardizedURL = fileURL.standardizedFileURL
+        self.fileURL = standardizedURL
+        self.lockFileURL = standardizedURL.appendingPathExtension("lock")
     }
 
     func load() throws -> Value? {
         lock.lock()
         defer { lock.unlock() }
-        return try loadWhileLocked()
+        return try withExclusiveFileLock {
+            try loadWhileLocked()
+        }
     }
 
     func save(_ value: Value) throws {
         lock.lock()
         defer { lock.unlock() }
-        try saveWhileLocked(value)
+        try withExclusiveFileLock {
+            try saveWhileLocked(value)
+        }
     }
 
     func clear() throws {
         lock.lock()
         defer { lock.unlock() }
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
-        try FileManager.default.removeItem(at: fileURL)
+        try withExclusiveFileLock {
+            guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+            try FileManager.default.removeItem(at: fileURL)
+        }
     }
 
-    /// Read-modify-write under a single lock acquisition.
+    /// Read-modify-write under one in-process and cross-process lock acquisition.
     func replace(_ transform: (Value?) throws -> Value) throws {
         lock.lock()
         defer { lock.unlock() }
-        try saveWhileLocked(transform(loadWhileLocked()))
+        try withExclusiveFileLock {
+            try saveWhileLocked(transform(loadWhileLocked()))
+        }
+    }
+
+    private func withExclusiveFileLock<Result>(_ operation: () throws -> Result) throws -> Result {
+        try FileManager.default.createDirectory(
+            at: lockFileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        let descriptor = lockFileURL.path.withCString { path in
+            open(path, O_CREAT | O_RDWR | O_CLOEXEC, mode_t(S_IRUSR | S_IWUSR))
+        }
+        guard descriptor >= 0 else {
+            throw JSONFileLockError(operation: "open", path: lockFileURL.path, code: errno)
+        }
+        defer {
+            _ = flock(descriptor, LOCK_UN)
+            _ = close(descriptor)
+        }
+
+        while flock(descriptor, LOCK_EX) != 0 {
+            let errorCode = errno
+            if errorCode == EINTR { continue }
+            throw JSONFileLockError(operation: "acquire", path: lockFileURL.path, code: errorCode)
+        }
+        return try operation()
     }
 
     private func loadWhileLocked() throws -> Value? {

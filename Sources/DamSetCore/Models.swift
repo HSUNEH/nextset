@@ -522,6 +522,7 @@ extension WorkoutRoutineSession {
 
 public struct WorkoutSummary: Identifiable, Codable, Equatable, Sendable {
     public var sessionId: String
+    public var routineId: String?
     public var routineName: String
     public var completedSets: [CompletedSet]
     public var totalSets: Int
@@ -533,14 +534,29 @@ public struct WorkoutSummary: Identifiable, Codable, Equatable, Sendable {
 
     public init(session: WorkoutRoutineSession, endedAt: Date) {
         self.sessionId = session.sessionId
+        self.routineId = session.routineId
         self.routineName = session.routineName
         self.completedSets = session.completedSets
         self.totalSets = session.completedSets.count
-        self.totalVolume = session.completedSets.reduce(0) { volume, set in
+        self.totalVolume = Self.volume(for: session.completedSets)
+        self.workoutStartTime = session.workoutStartTime
+        self.workoutEndTime = endedAt
+    }
+
+    /// Returns an edited snapshot while keeping derived totals consistent.
+    /// Bodyweight sets contribute no external-load volume.
+    public func replacingCompletedSets(_ completedSets: [CompletedSet]) -> WorkoutSummary {
+        var updated = self
+        updated.completedSets = completedSets
+        updated.totalSets = completedSets.count
+        updated.totalVolume = Self.volume(for: completedSets)
+        return updated
+    }
+
+    private static func volume(for completedSets: [CompletedSet]) -> Double {
+        completedSets.reduce(0) { volume, set in
             guard set.exerciseKind == .weighted else { return volume }
             return volume + (set.actualWeight * Double(set.actualReps))
         }
-        self.workoutStartTime = session.workoutStartTime
-        self.workoutEndTime = endedAt
     }
 }

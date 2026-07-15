@@ -2,30 +2,68 @@ import Foundation
 
 public protocol LocalWorkoutStore: Sendable {
     func save(_ summary: WorkoutSummary) throws
+    @discardableResult
+    func update(
+        sessionId: String,
+        _ transform: (WorkoutSummary) throws -> WorkoutSummary
+    ) throws -> WorkoutSummary?
     func delete(sessionId: String) throws
     func summary(sessionId: String) throws -> WorkoutSummary?
     func allSummaries() throws -> [WorkoutSummary]
 }
 
+public enum LocalWorkoutStoreError: Error, Equatable, Sendable {
+    case sessionIdChanged(expected: String, actual: String)
+}
+
 public final class InMemoryWorkoutStore: LocalWorkoutStore, @unchecked Sendable {
     private var summaries: [String: WorkoutSummary] = [:]
+    private let lock = NSLock()
 
     public init() {}
 
     public func save(_ summary: WorkoutSummary) throws {
+        lock.lock()
+        defer { lock.unlock() }
         summaries[summary.sessionId] = summary
     }
 
+    @discardableResult
+    public func update(
+        sessionId: String,
+        _ transform: (WorkoutSummary) throws -> WorkoutSummary
+    ) throws -> WorkoutSummary? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let existing = summaries[sessionId] else { return nil }
+
+        let updated = try transform(existing)
+        guard updated.sessionId == sessionId else {
+            throw LocalWorkoutStoreError.sessionIdChanged(
+                expected: sessionId,
+                actual: updated.sessionId
+            )
+        }
+        summaries[sessionId] = updated
+        return updated
+    }
+
     public func delete(sessionId: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
         summaries.removeValue(forKey: sessionId)
     }
 
     public func summary(sessionId: String) throws -> WorkoutSummary? {
-        summaries[sessionId]
+        lock.lock()
+        defer { lock.unlock() }
+        return summaries[sessionId]
     }
 
     public func allSummaries() throws -> [WorkoutSummary] {
-        summaries.values.sorted { $0.workoutEndTime > $1.workoutEndTime }
+        lock.lock()
+        defer { lock.unlock() }
+        return summaries.values.sorted { $0.workoutEndTime > $1.workoutEndTime }
     }
 }
 
@@ -64,6 +102,32 @@ public final class FileWorkoutStore: LocalWorkoutStore, @unchecked Sendable {
             summaries.append(summary)
             return summaries
         }
+    }
+
+    @discardableResult
+    public func update(
+        sessionId: String,
+        _ transform: (WorkoutSummary) throws -> WorkoutSummary
+    ) throws -> WorkoutSummary? {
+        var result: WorkoutSummary?
+        try box.replace { existing in
+            var summaries = existing ?? []
+            guard let index = summaries.firstIndex(where: { $0.sessionId == sessionId }) else {
+                return summaries
+            }
+
+            let updated = try transform(summaries[index])
+            guard updated.sessionId == sessionId else {
+                throw LocalWorkoutStoreError.sessionIdChanged(
+                    expected: sessionId,
+                    actual: updated.sessionId
+                )
+            }
+            summaries[index] = updated
+            result = updated
+            return summaries
+        }
+        return result
     }
 
     public func delete(sessionId: String) throws {

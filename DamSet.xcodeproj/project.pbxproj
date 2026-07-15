@@ -12,12 +12,14 @@
 		0EED8CADB70450F64698385C /* RestTick.wav in Resources */ = {isa = PBXBuildFile; fileRef = DB248FCD4A2911008F085A1D /* RestTick.wav */; };
 		0F50095EC11B5C23E22A00C0 /* WorkoutIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A21A9590C3DA691F895A576 /* WorkoutIntents.swift */; };
 		1EE0395B67313EE55A4C928A /* RestCountdown.wav in Resources */ = {isa = PBXBuildFile; fileRef = E4A5B53EE436A692EEFB9CC5 /* RestCountdown.wav */; };
+		242A14DF39868151C1A4C1AA /* WorkoutProgressChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0495A65F9FA91873C4D0CD4 /* WorkoutProgressChartView.swift */; };
 		378D9E2BD85420B204816440 /* DamSetApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7C2D16B4D1A9DE22FCE679 /* DamSetApp.swift */; };
 		39BAD03EF6F32CAACB571A28 /* ActiveSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A27DCCBFE5A536E6E9F1F784 /* ActiveSessionStore.swift */; };
 		4055076DB9730EBF609250B6 /* DamSetCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9BB820959617D3C2068E5A2C /* DamSetCore.framework */; };
 		41026D13B7C0B56093475114 /* DamSetCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9BB820959617D3C2068E5A2C /* DamSetCore.framework */; };
 		42AA64B94BDE78E193BC366E /* WorkoutLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6CCA0154BEC07B39EF198C0 /* WorkoutLaunchView.swift */; };
 		43C408E55DC7F68BDDAEEC87 /* RoutineListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 428BFF58B6161348F5930FB0 /* RoutineListView.swift */; };
+		4F41AC59788F43417EFEC654 /* WorkoutProgressAnalysisTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6927C95035396EB165304F33 /* WorkoutProgressAnalysisTests.swift */; };
 		52C3E0104F17B6946D3928F3 /* WorkoutEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87306A9AA2488F81AEA8A07B /* WorkoutEngineTests.swift */; };
 		5D13902986EA4BF0451CDDED /* WorkoutEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52FDB0CC31603C0D20AFAE29 /* WorkoutEngine.swift */; };
 		5DB1E05FD4AA2450D7D15EEF /* DamSetLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 380323D27E7993283F5540F4 /* DamSetLiveActivityWidget.swift */; };
@@ -27,6 +29,7 @@
 		8F0EC385E2E908764D4B79FE /* WorkoutViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F478989BC453BD18278C2A47 /* WorkoutViewModel.swift */; };
 		8FB993FB4E8C7C61D492EEE6 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43FC3B5ED6D6DF5A52C74257 /* Models.swift */; };
 		94A10C43F060CA5A4C9CC4EA /* DamSetDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 559FE8F908DE76B347AA3297 /* DamSetDesign.swift */; };
+		9683E099E4F2CB1DBE202FB4 /* WorkoutProgressAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4814A3A6F5E8BF6420005B02 /* WorkoutProgressAnalysis.swift */; };
 		9C57866151FF5E2839B95FE5 /* RestStart.wav in Resources */ = {isa = PBXBuildFile; fileRef = 78CAED4B5D4944DBFC9C43FA /* RestStart.wav */; };
 		9CDB6F1BA47464E5DF26CCCD /* LocalWorkoutStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EE50DD36881B3CE672D67CB /* LocalWorkoutStore.swift */; };
 		9CF0CB1F7861E0F90D1519AC /* RoutineTemplateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD6811B099D1073BC0417C4D /* RoutineTemplateStore.swift */; };
@@ -38,6 +41,7 @@
 		E7815507DCDDF676E97C446B /* DamSetCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9BB820959617D3C2068E5A2C /* DamSetCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		F2670DF82BC4DA53954F4FF3 /* WorkoutIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A21A9590C3DA691F895A576 /* WorkoutIntents.swift */; };
 		FC67C0D282A3CB08A88959A9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 19A85E44753030ADC2F07493 /* Assets.xcassets */; };
+		FCFB2B5B8FB082002020B093 /* WorkoutRecordEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF92D3B8F706DDD4D28FE3C7 /* WorkoutRecordEditView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -115,11 +119,13 @@
 		4199100239F8A22660EC5DDF /* DamSetCoreTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = DamSetCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		428BFF58B6161348F5930FB0 /* RoutineListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineListView.swift; sourceTree = "<group>"; };
 		43FC3B5ED6D6DF5A52C74257 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		4814A3A6F5E8BF6420005B02 /* WorkoutProgressAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutProgressAnalysis.swift; sourceTree = "<group>"; };
 		52FDB0CC31603C0D20AFAE29 /* WorkoutEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutEngine.swift; sourceTree = "<group>"; };
 		559FE8F908DE76B347AA3297 /* DamSetDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DamSetDesign.swift; sourceTree = "<group>"; };
 		5A21A9590C3DA691F895A576 /* WorkoutIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutIntents.swift; sourceTree = "<group>"; };
 		5EE50DD36881B3CE672D67CB /* LocalWorkoutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalWorkoutStore.swift; sourceTree = "<group>"; };
 		6211CA0C2D7B7A99C853DD25 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		6927C95035396EB165304F33 /* WorkoutProgressAnalysisTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutProgressAnalysisTests.swift; sourceTree = "<group>"; };
 		6D7C2D16B4D1A9DE22FCE679 /* DamSetApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DamSetApp.swift; sourceTree = "<group>"; };
 		766C906E10DBA9F3D41F0DF7 /* RoutineStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineStoreTests.swift; sourceTree = "<group>"; };
 		76D1697CB5D111446A1CF950 /* JSONFileBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONFileBox.swift; sourceTree = "<group>"; };
@@ -137,7 +143,9 @@
 		ACBAFBA603FC64B29C98D38B /* DamSetLiveActivity.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DamSetLiveActivity.entitlements; sourceTree = "<group>"; };
 		AD6811B099D1073BC0417C4D /* RoutineTemplateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineTemplateStore.swift; sourceTree = "<group>"; };
 		B2299AE6EFD2828B702DCB35 /* ActiveWorkoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutView.swift; sourceTree = "<group>"; };
+		BF92D3B8F706DDD4D28FE3C7 /* WorkoutRecordEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutRecordEditView.swift; sourceTree = "<group>"; };
 		DB248FCD4A2911008F085A1D /* RestTick.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = RestTick.wav; sourceTree = "<group>"; };
+		E0495A65F9FA91873C4D0CD4 /* WorkoutProgressChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutProgressChartView.swift; sourceTree = "<group>"; };
 		E4A5B53EE436A692EEFB9CC5 /* RestCountdown.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = RestCountdown.wav; sourceTree = "<group>"; };
 		F478989BC453BD18278C2A47 /* WorkoutViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutViewModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -215,6 +223,8 @@
 				122764DA1950E19482F4DD25 /* RoutineSetupView.swift */,
 				8EED7360C77CA6BD80647A82 /* WorkoutHistoryCalendarView.swift */,
 				A6CCA0154BEC07B39EF198C0 /* WorkoutLaunchView.swift */,
+				E0495A65F9FA91873C4D0CD4 /* WorkoutProgressChartView.swift */,
+				BF92D3B8F706DDD4D28FE3C7 /* WorkoutRecordEditView.swift */,
 				F478989BC453BD18278C2A47 /* WorkoutViewModel.swift */,
 				7AF16E26047EA5462FB5FD07 /* Resources */,
 			);
@@ -240,6 +250,7 @@
 				9B99341A42E298943F6CF9EC /* RestCue.swift */,
 				AD6811B099D1073BC0417C4D /* RoutineTemplateStore.swift */,
 				52FDB0CC31603C0D20AFAE29 /* WorkoutEngine.swift */,
+				4814A3A6F5E8BF6420005B02 /* WorkoutProgressAnalysis.swift */,
 			);
 			path = DamSetCore;
 			sourceTree = "<group>";
@@ -249,6 +260,7 @@
 			children = (
 				766C906E10DBA9F3D41F0DF7 /* RoutineStoreTests.swift */,
 				87306A9AA2488F81AEA8A07B /* WorkoutEngineTests.swift */,
+				6927C95035396EB165304F33 /* WorkoutProgressAnalysisTests.swift */,
 			);
 			path = DamSetCoreTests;
 			sourceTree = "<group>";
@@ -439,6 +451,7 @@
 				5FD413E4FBA065C9C755B4C1 /* RestCue.swift in Sources */,
 				9CF0CB1F7861E0F90D1519AC /* RoutineTemplateStore.swift in Sources */,
 				5D13902986EA4BF0451CDDED /* WorkoutEngine.swift in Sources */,
+				9683E099E4F2CB1DBE202FB4 /* WorkoutProgressAnalysis.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -454,6 +467,8 @@
 				6F91150D3590C22BB3EBB970 /* WorkoutHistoryCalendarView.swift in Sources */,
 				F2670DF82BC4DA53954F4FF3 /* WorkoutIntents.swift in Sources */,
 				42AA64B94BDE78E193BC366E /* WorkoutLaunchView.swift in Sources */,
+				242A14DF39868151C1A4C1AA /* WorkoutProgressChartView.swift in Sources */,
+				FCFB2B5B8FB082002020B093 /* WorkoutRecordEditView.swift in Sources */,
 				8F0EC385E2E908764D4B79FE /* WorkoutViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -464,6 +479,7 @@
 			files = (
 				AB91262252317F7AA32CCE42 /* RoutineStoreTests.swift in Sources */,
 				52C3E0104F17B6946D3928F3 /* WorkoutEngineTests.swift in Sources */,
+				4F41AC59788F43417EFEC654 /* WorkoutProgressAnalysisTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

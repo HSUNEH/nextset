@@ -63,6 +63,53 @@ final class WorkoutViewModel {
         }
     }
 
+    @discardableResult
+    func updateWorkoutSummary(_ summary: WorkoutSummary) -> Bool {
+        guard activeSession?.sessionId != summary.sessionId else {
+            errorMessage = "Finish the active workout before editing its record."
+            return false
+        }
+        do {
+            let normalized = summary.replacingCompletedSets(summary.completedSets)
+            guard let persisted = try store.update(sessionId: summary.sessionId, { _ in normalized }) else {
+                errorMessage = "This workout record no longer exists."
+                reloadSummaries()
+                return false
+            }
+            savedSummaries.removeAll { $0.sessionId == persisted.sessionId }
+            savedSummaries.append(persisted)
+            savedSummaries.sort { $0.workoutEndTime > $1.workoutEndTime }
+            if lastSummary?.sessionId == persisted.sessionId {
+                lastSummary = persisted
+            }
+            reloadSummaries()
+            return true
+        } catch {
+            report(error, context: "Workout record could not be updated")
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteWorkoutSummary(_ summary: WorkoutSummary) -> Bool {
+        guard activeSession?.sessionId != summary.sessionId else {
+            errorMessage = "Finish the active workout before deleting its record."
+            return false
+        }
+        do {
+            try store.delete(sessionId: summary.sessionId)
+            savedSummaries.removeAll { $0.sessionId == summary.sessionId }
+            if lastSummary?.sessionId == summary.sessionId {
+                lastSummary = nil
+            }
+            reloadSummaries()
+            return true
+        } catch {
+            report(error, context: "Workout record could not be deleted")
+            return false
+        }
+    }
+
     func start(_ routine: RoutineTemplate) {
         guard !isBusy, activeSession == nil else { return }
         do {

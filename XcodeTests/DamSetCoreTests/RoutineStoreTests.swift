@@ -271,6 +271,212 @@ final class RoutineStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.completedSets.last?.actualWeight, 0)
     }
 
+    func testNewWorkoutSummaryStoresAndRoundTripsRoutineId() throws {
+        let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
+        let engine = WorkoutEngine()
+        var session = try engine.startSession(
+            routine: routine,
+            now: Date(timeIntervalSince1970: 100),
+            sessionId: "summary-with-routine"
+        )
+        try engine.completeCurrentSet(session: &session, now: Date(timeIntervalSince1970: 110))
+        let summary = engine.summarize(session: session, endedAt: Date(timeIntervalSince1970: 120))
+
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("damset-summary-routine-id-\(UUID().uuidString)", isDirectory: true)
+        let fileURL = directoryURL.appendingPathComponent("summaries.json")
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+        let store = FileWorkoutStore(fileURL: fileURL)
+        try store.save(summary)
+        let reloaded = try XCTUnwrap(store.summary(sessionId: summary.sessionId))
+
+        XCTAssertEqual(summary.routineId, routine.routineId)
+        XCTAssertEqual(reloaded.routineId, routine.routineId)
+        XCTAssertEqual(reloaded, summary)
+    }
+
+    func testLegacyWorkoutSummaryWithoutRoutineIdDecodesAsNil() throws {
+        let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
+        let engine = WorkoutEngine()
+        let session = try engine.startSession(
+            routine: routine,
+            now: Date(timeIntervalSince1970: 100),
+            sessionId: "legacy-summary"
+        )
+        let summary = engine.summarize(session: session, endedAt: Date(timeIntervalSince1970: 120))
+
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("damset-legacy-summary-\(UUID().uuidString)", isDirectory: true)
+        let fileURL = directoryURL.appendingPathComponent("summaries.json")
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+        let store = FileWorkoutStore(fileURL: fileURL)
+        try store.save(summary)
+
+        let data = try Data(contentsOf: fileURL)
+        var summaries = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        summaries[0].removeValue(forKey: "routineId")
+        try JSONSerialization.data(withJSONObject: summaries).write(to: fileURL, options: .atomic)
+
+        let legacy = try XCTUnwrap(store.summary(sessionId: summary.sessionId))
+        XCTAssertNil(legacy.routineId)
+        XCTAssertEqual(legacy.sessionId, summary.sessionId)
+        XCTAssertEqual(legacy.routineName, summary.routineName)
+        XCTAssertEqual(legacy.completedSets, summary.completedSets)
+    }
+
+    func testReplacingCompletedSetsRecalculatesDerivedTotals() throws {
+        let original = try Self.makeEmptySummary(sessionId: "edited-summary")
+        let weighted = Self.makeCompletedSet(
+            id: "weighted",
+            exerciseKind: .weighted,
+            weight: 50,
+            reps: 4
+        )
+        let bodyweight = Self.makeCompletedSet(
+            id: "bodyweight",
+            exerciseKind: .bodyweight,
+            weight: 90,
+            reps: 10
+        )
+
+        let edited = original.replacingCompletedSets([weighted, bodyweight])
+
+        XCTAssertEqual(edited.sessionId, original.sessionId)
+        XCTAssertEqual(edited.routineId, original.routineId)
+        XCTAssertEqual(edited.workoutStartTime, original.workoutStartTime)
+        XCTAssertEqual(edited.workoutEndTime, original.workoutEndTime)
+        XCTAssertEqual(edited.totalSets, 2)
+        XCTAssertEqual(edited.totalVolume, 200)
+        XCTAssertEqual(edited.completedSets.last?.actualWeight, 0)
+        XCTAssertTrue(original.completedSets.isEmpty)
+        XCTAssertEqual(original.totalSets, 0)
+    }
+
+    func testInMemoryWorkoutStoreUpdateIsAtomicAndRejectsIdentityChange() throws {
+        let original = try Self.makeEmptySummary(sessionId: "memory-update")
+        let store = InMemoryWorkoutStore()
+        try store.save(original)
+
+        let updated = try store.update(sessionId: original.sessionId) { summary in
+            summary.replacingCompletedSets([
+                Self.makeCompletedSet(id: "edited", weight: 40, reps: 5)
+            ])
+        }
+
+        XCTAssertEqual(updated?.totalSets, 1)
+        XCTAssertEqual(updated?.totalVolume, 200)
+        XCTAssertEqual(try store.summary(sessionId: original.sessionId), updated)
+        XCTAssertNil(try store.update(sessionId: "missing") { $0 })
+
+        XCTAssertThrowsError(
+            try store.update(sessionId: original.sessionId) { summary in
+                var invalid = summary
+                invalid.sessionId = "different-session"
+                return invalid
+            }
+        ) { error in
+            XCTAssertEqual(
+                error as? LocalWorkoutStoreError,
+                .sessionIdChanged(expected: original.sessionId, actual: "different-session")
+            )
+        }
+        XCTAssertEqual(try store.summary(sessionId: original.sessionId), updated)
+    }
+
+    func testFileWorkoutStoreUpdatePersistsWithoutDuplicatingSummary() throws {
+        let original = try Self.makeEmptySummary(sessionId: "file-update")
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("damset-summary-update-\(UUID().uuidString)", isDirectory: true)
+        let fileURL = directoryURL.appendingPathComponent("summaries.json")
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+        let store = FileWorkoutStore(fileURL: fileURL)
+        try store.save(original)
+        let updated = try store.update(sessionId: original.sessionId) { summary in
+            summary.replacingCompletedSets([
+                Self.makeCompletedSet(id: "edited", weight: 62.5, reps: 8)
+            ])
+        }
+
+        let reloaded = FileWorkoutStore(fileURL: fileURL)
+        XCTAssertEqual(try reloaded.summary(sessionId: original.sessionId), updated)
+        XCTAssertEqual(try reloaded.allSummaries().count, 1)
+        XCTAssertEqual(updated?.totalVolume, 500)
+    }
+
+    func testConcurrentInMemoryWorkoutUpdatesDoNotLoseEdits() throws {
+        let original = try Self.makeEmptySummary(sessionId: "concurrent-update")
+        let store = InMemoryWorkoutStore()
+        try store.save(original)
+
+        let iterations = 40
+        DispatchQueue.concurrentPerform(iterations: iterations) { index in
+            _ = try? store.update(sessionId: original.sessionId) { summary in
+                var sets = summary.completedSets
+                sets.append(Self.makeCompletedSet(id: "set-\(index)", weight: 10, reps: 1))
+                return summary.replacingCompletedSets(sets)
+            }
+        }
+
+        let updated = try XCTUnwrap(store.summary(sessionId: original.sessionId))
+        XCTAssertEqual(updated.totalSets, iterations)
+        XCTAssertEqual(updated.totalVolume, Double(iterations * 10))
+        XCTAssertEqual(Set(updated.completedSets.map(\.setId)).count, iterations)
+    }
+
+    func testSeparateFileWorkoutStoreInstancesSerializeConcurrentUpdates() throws {
+        let original = try Self.makeEmptySummary(sessionId: "cross-instance-update")
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("damset-cross-instance-update-\(UUID().uuidString)", isDirectory: true)
+        let fileURL = directoryURL.appendingPathComponent("summaries.json")
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+        let stores = [
+            FileWorkoutStore(fileURL: fileURL),
+            FileWorkoutStore(fileURL: fileURL)
+        ]
+        try stores[0].save(original)
+
+        let iterations = 40
+        DispatchQueue.concurrentPerform(iterations: iterations) { index in
+            _ = try? stores[index % stores.count].update(sessionId: original.sessionId) { summary in
+                // Widen the RMW window so this test reliably catches per-instance-only locking.
+                Thread.sleep(forTimeInterval: 0.001)
+                var sets = summary.completedSets
+                sets.append(Self.makeCompletedSet(id: "file-set-\(index)", weight: 10, reps: 1))
+                return summary.replacingCompletedSets(sets)
+            }
+        }
+
+        let updated = try XCTUnwrap(FileWorkoutStore(fileURL: fileURL).summary(sessionId: original.sessionId))
+        XCTAssertEqual(updated.totalSets, iterations)
+        XCTAssertEqual(updated.totalVolume, Double(iterations * 10))
+        XCTAssertEqual(Set(updated.completedSets.map(\.setId)).count, iterations)
+    }
+
+    func testSeparateFileWorkoutStoreInstancesSerializeConcurrentSaves() throws {
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("damset-cross-instance-save-\(UUID().uuidString)", isDirectory: true)
+        let fileURL = directoryURL.appendingPathComponent("summaries.json")
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+        let iterations = 40
+        let stores = (0..<iterations).map { _ in FileWorkoutStore(fileURL: fileURL) }
+        let summaries = try (0..<iterations).map { index in
+            try Self.makeEmptySummary(sessionId: "saved-session-\(index)")
+        }
+
+        DispatchQueue.concurrentPerform(iterations: iterations) { index in
+            _ = try? stores[index].save(summaries[index])
+        }
+
+        let saved = try FileWorkoutStore(fileURL: fileURL).allSummaries()
+        XCTAssertEqual(saved.count, iterations)
+        XCTAssertEqual(Set(saved.map(\.sessionId)), Set(summaries.map(\.sessionId)))
+    }
+
     func testDeletingSeedAndAddingCustomRoutinePersistsAsUserCatalog() throws {
         try withStore { store, fileURL in
             let deletedId = try XCTUnwrap(RoutineCatalog.defaultRoutines.first?.routineId)
@@ -352,6 +558,32 @@ final class RoutineStoreTests: XCTestCase {
                     restDurationSeconds: 60
                 )
             }
+        )
+    }
+
+    private static func makeEmptySummary(sessionId: String) throws -> WorkoutSummary {
+        let routine = makeRoutine(id: "summary-routine")
+        let session = try WorkoutEngine().startSession(
+            routine: routine,
+            now: Date(timeIntervalSince1970: 100),
+            sessionId: sessionId
+        )
+        return WorkoutSummary(session: session, endedAt: Date(timeIntervalSince1970: 200))
+    }
+
+    private static func makeCompletedSet(
+        id: String,
+        exerciseKind: ExerciseKind = .weighted,
+        weight: Double,
+        reps: Int
+    ) -> CompletedSet {
+        CompletedSet(
+            setId: id,
+            exerciseName: exerciseKind == .weighted ? "Bench Press" : "Push-Up",
+            exerciseKind: exerciseKind,
+            actualWeight: weight,
+            actualReps: reps,
+            completedAt: Date(timeIntervalSince1970: 150)
         )
     }
 }

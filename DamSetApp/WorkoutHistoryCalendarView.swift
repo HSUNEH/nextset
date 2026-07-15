@@ -6,6 +6,8 @@ import DamSetCore
 /// device calendar or time zone changes.
 struct WorkoutHistoryCalendarView: View {
     let summaries: [WorkoutSummary]
+    let onUpdate: (WorkoutSummary) -> Bool
+    let onDelete: (WorkoutSummary) -> Bool
 
     @State private var range: HistoryCalendarRange
     @State private var visibleDate: Date
@@ -15,8 +17,15 @@ struct WorkoutHistoryCalendarView: View {
     @Environment(\.locale) private var locale
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    init(summaries: [WorkoutSummary], initialDate: Date? = nil) {
+    init(
+        summaries: [WorkoutSummary],
+        initialDate: Date? = nil,
+        onUpdate: @escaping (WorkoutSummary) -> Bool = { _ in false },
+        onDelete: @escaping (WorkoutSummary) -> Bool = { _ in false }
+    ) {
         self.summaries = summaries
+        self.onUpdate = onUpdate
+        self.onDelete = onDelete
         let initialSelection = initialDate
             ?? summaries.map(\.workoutEndTime).max()
             ?? Date()
@@ -236,7 +245,12 @@ struct WorkoutHistoryCalendarView: View {
             } else {
                 ForEach(selectedSummaries) { summary in
                     NavigationLink {
-                        WorkoutSummaryDetailView(summary: summary)
+                        WorkoutSummaryDetailView(
+                            summary: summary,
+                            allSummaries: summaries,
+                            onUpdate: updateSummary,
+                            onDelete: onDelete
+                        )
                     } label: {
                         WorkoutCalendarSummaryRow(
                             summary: summary,
@@ -406,6 +420,13 @@ struct WorkoutHistoryCalendarView: View {
 
     private func summaries(on date: Date) -> [WorkoutSummary] {
         summaries.filter { calendar.isDate($0.workoutEndTime, inSameDayAs: date) }
+    }
+
+    private func updateSummary(_ summary: WorkoutSummary) -> Bool {
+        guard onUpdate(summary) else { return false }
+        selectedDate = calendar.startOfDay(for: summary.workoutEndTime)
+        visibleDate = summary.workoutEndTime
+        return true
     }
 
     private func accessibilityDate(_ date: Date) -> String {
