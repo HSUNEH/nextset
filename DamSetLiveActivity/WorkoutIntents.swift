@@ -3,10 +3,9 @@ import AppIntents
 import Foundation
 import DamSetCore
 
-/// Shared body for Lock Screen actions. Completion and next-set actions keep
-/// using `LiveActivityIntent` so the app process can maintain rest cues;
-/// lightweight reps corrections use a normal `AppIntent` in the widget
-/// extension and avoid waking the full app on every +/- tap.
+/// Shared body for Lock Screen actions. These run in the app process through
+/// `LiveActivityIntent`, which keeps the App Group session, Live Activity,
+/// and rest-cue scheduling on the same proven pipeline.
 ///
 /// Every action is scoped to the Live Activity's session ID. This keeps an old
 /// activity from mutating a newer workout if iOS has not dismissed it yet.
@@ -61,12 +60,9 @@ private actor LockScreenActionCoordinator {
     }
 }
 
-/// Reps corrections don't change the rest deadline, so execute this directly
-/// inside the widget extension instead of paying the app-process launch cost.
-struct AdjustRepsIntent: AppIntent {
+struct AdjustRepsIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Adjust Reps"
     static let isDiscoverable = false
-    static let openAppWhenRun = false
 
     @Parameter(title: "Session ID") var sessionId: String
     @Parameter(title: "Delta") var delta: Int

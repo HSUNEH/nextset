@@ -110,6 +110,9 @@ public struct WorkoutEngine: Sendable {
             actualWeight: completed.actualWeight,
             resumeAt: now.addingTimeInterval(TimeInterval(planned.restDurationSeconds))
         )
+        if planned.restDurationSeconds == 0 {
+            startNextSetAfterRest(session: &session)
+        }
     }
 
     /// Source-compatible bridge for older callers. New call sites should
@@ -129,17 +132,25 @@ public struct WorkoutEngine: Sendable {
     }
 
     public func updateRest(session: inout WorkoutRoutineSession, now: Date = Date()) {
-        guard session.sessionStatus == .resting, let resumeAt = session.lockScreenState.resumeAt else { return }
+        guard session.sessionStatus == .resting else { return }
+        guard let resumeAt = session.lockScreenState.resumeAt else {
+            // Migration/repeat-set fallback from the previous explicit-ready
+            // flow. It now joins the same automatic transition.
+            if session.lockScreenState.phase == .readyForNextSet {
+                startNextSetAfterRest(session: &session)
+            }
+            return
+        }
         let remaining = restRemainingSeconds(until: resumeAt, now: now)
         session.lockScreenState.restRemainingSeconds = remaining
         if remaining == 0 {
-            session.lockScreenState.phase = .readyForNextSet
+            startNextSetAfterRest(session: &session)
         }
     }
 
     /// Changes the wall-clock rest deadline while keeping the rendered
-    /// countdown and phase derived from that deadline. This also lets a user
-    /// add time after the countdown has reached the ready state.
+    /// countdown derived from that deadline. Reaching zero immediately starts
+    /// the next set, matching the normal timer-expiry transition.
     public func adjustRest(
         session: inout WorkoutRoutineSession,
         deltaSeconds: Int,
@@ -166,13 +177,18 @@ public struct WorkoutEngine: Sendable {
             adjustedRemaining = max(0, unclampedRemaining)
         }
 
+        if adjustedRemaining == 0 {
+            startNextSetAfterRest(session: &session)
+            return
+        }
+
         session.lockScreenState.restRemainingSeconds = adjustedRemaining
         session.lockScreenState.resumeAt = now.addingTimeInterval(TimeInterval(adjustedRemaining))
-        session.lockScreenState.phase = adjustedRemaining == 0 ? .readyForNextSet : .resting
+        session.lockScreenState.phase = .resting
     }
 
-    /// Brings the wall-clock countdown up to date without changing sets. The
-    /// user explicitly advances (or skips rest) through `advanceToNextSet`.
+    /// Brings the wall-clock countdown up to date and automatically enters the
+    /// next set once its deadline has elapsed.
     public func refresh(session: inout WorkoutRoutineSession, now: Date = Date()) {
         updateRest(session: &session, now: now)
     }
@@ -183,11 +199,9 @@ public struct WorkoutEngine: Sendable {
                 || session.lockScreenState.phase == .readyForNextSet else {
             throw WorkoutEngineError.invalidTransition
         }
-        guard let nextSet = session.nextPlannedSet else { throw WorkoutEngineError.noActiveSet }
-        let nextIndex = session.currentSetIndex + 1
-        session.currentSetIndex = nextIndex
-        session.sessionStatus = .active
-        session.lockScreenState = .performing(nextSet, setIndex: nextIndex, totalSets: session.plannedSets.count)
+        guard startNextSetAfterRest(session: &session) else {
+            throw WorkoutEngineError.noActiveSet
+        }
     }
 
     /// Reopens the set that was just completed, preserving the recorded reps
@@ -248,15 +262,12 @@ public struct WorkoutEngine: Sendable {
         session.lockScreenState.totalPlannedSets = session.plannedSets.count
 
         // A set added immediately after completing the original last set makes
-        // that session actionable again. Treat it as a zero-second rest so the
-        // existing next-set transition remains the single way to advance.
+        // that session actionable again. Start the newly appended set at once
+        // rather than reintroducing a manual ready/confirmation state.
         if session.sessionStatus == .completed {
             session.sessionStatus = .resting
             session.workoutEndTime = nil
-            session.lockScreenState.canCompleteSet = false
-            session.lockScreenState.restRemainingSeconds = 0
-            session.lockScreenState.resumeAt = nil
-            session.lockScreenState.phase = .readyForNextSet
+            _ = startNextSetAfterRest(session: &session)
         }
     }
 
@@ -283,6 +294,30 @@ public struct WorkoutEngine: Sendable {
         guard isPerforming || isCorrectingCompletedSet else {
             throw WorkoutEngineError.invalidTransition
         }
+    }
+
+    /// A rest deadline is a transition, not a prompt. Moving the state here
+    /// keeps foreground ticks, app restoration, and Lock Screen intents on the
+    /// same automatic-next-set behavior. The `false` return only protects
+    /// malformed/legacy sessions that have no following planned set.
+    @discardableResult
+    private func startNextSetAfterRest(session: inout WorkoutRoutineSession) -> Bool {
+        guard let nextSet = session.nextPlannedSet else {
+            session.lockScreenState.restRemainingSeconds = 0
+            session.lockScreenState.resumeAt = nil
+            session.lockScreenState.phase = .readyForNextSet
+            return false
+        }
+
+        let nextIndex = session.currentSetIndex + 1
+        session.currentSetIndex = nextIndex
+        session.sessionStatus = .active
+        session.lockScreenState = .performing(
+            nextSet,
+            setIndex: nextIndex,
+            totalSets: session.plannedSets.count
+        )
+        return true
     }
 
     private func restRemainingSeconds(until resumeAt: Date, now: Date) -> Int {

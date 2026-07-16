@@ -326,7 +326,8 @@ final class RoutineStoreTests: XCTestCase {
         var session = try engine.startSession(routine: routine)
 
         try engine.completeCurrentSet(session: &session)
-        try engine.advanceToNextSet(session: &session)
+        XCTAssertEqual(session.currentSetIndex, 2)
+        XCTAssertEqual(session.lockScreenState.phase, .performingSet)
         try engine.completeCurrentSet(session: &session)
 
         XCTAssertEqual(session.completedSets.map(\.exerciseKind), [.bodyweight, .weighted])

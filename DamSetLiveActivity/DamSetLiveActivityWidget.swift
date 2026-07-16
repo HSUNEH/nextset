@@ -34,16 +34,20 @@ struct DamSetLiveActivityWidget: Widget {
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(context.state.exerciseName)
+                        Text(displayedExerciseName(for: context))
                             .font(.headline)
                             .lineLimit(1)
-                        Text("Set \(context.state.currentSetIndex)/\(context.state.totalPlannedSets)")
+                        Text("Set \(displayedSetIndex(for: context))/\(context.state.totalPlannedSets)")
                             .font(.caption)
                             .foregroundStyle(TrainingPalette.accent)
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    if restIsReady(context) {
+                    if showsAutomaticNextSet(context) {
+                        Text("\(displayedActualReps(for: context))")
+                            .font(.title2.bold().monospacedDigit())
+                            .foregroundStyle(TrainingPalette.accent)
+                    } else if restIsReady(context) {
                         Text("READY")
                             .font(.caption.bold())
                             .foregroundStyle(TrainingPalette.completed)
@@ -69,11 +73,15 @@ struct DamSetLiveActivityWidget: Widget {
                     }
                 }
             } compactLeading: {
-                Text("\(context.state.currentSetIndex)/\(context.state.totalPlannedSets)")
+                Text("\(displayedSetIndex(for: context))/\(context.state.totalPlannedSets)")
                     .font(.caption2.bold())
                     .foregroundStyle(TrainingPalette.accent)
             } compactTrailing: {
-                if restIsReady(context) {
+                if showsAutomaticNextSet(context) {
+                    Text("\(displayedActualReps(for: context))")
+                        .monospacedDigit()
+                        .foregroundStyle(TrainingPalette.accent)
+                } else if restIsReady(context) {
                     Image(systemName: "forward.fill")
                         .foregroundStyle(TrainingPalette.completed)
                 } else if isResting(context.state), let resumeAt = context.state.resumeAt {
@@ -97,9 +105,55 @@ struct DamSetLiveActivityWidget: Widget {
         state.phase == LockScreenPhase.resting.rawValue || state.phase == LockScreenPhase.readyForNextSet.rawValue
     }
 
+    /// WidgetKit marks a Live Activity stale at the rest deadline even if iOS
+    /// has suspended the app. Carrying the next planned set in ContentState
+    /// lets the Lock Screen immediately present it without a manual "Next".
+    private func showsAutomaticNextSet(_ context: ActivityViewContext<DamSetActivityAttributes>) -> Bool {
+        context.state.phase == LockScreenPhase.resting.rawValue
+            && context.isStale
+            && context.state.nextExerciseName != nil
+    }
+
     private func restIsReady(_ context: ActivityViewContext<DamSetActivityAttributes>) -> Bool {
         context.state.phase == LockScreenPhase.readyForNextSet.rawValue ||
-            (context.state.phase == LockScreenPhase.resting.rawValue && context.isStale)
+            (context.state.phase == LockScreenPhase.resting.rawValue
+                && context.isStale
+                && !showsAutomaticNextSet(context))
+    }
+
+    private func displayedExerciseName(for context: ActivityViewContext<DamSetActivityAttributes>) -> String {
+        showsAutomaticNextSet(context)
+            ? context.state.nextExerciseName ?? context.state.exerciseName
+            : context.state.exerciseName
+    }
+
+    private func displayedSetIndex(for context: ActivityViewContext<DamSetActivityAttributes>) -> Int {
+        guard showsAutomaticNextSet(context) else { return context.state.currentSetIndex }
+        return min(context.state.currentSetIndex + 1, context.state.totalPlannedSets)
+    }
+
+    private func displayedExerciseKind(for context: ActivityViewContext<DamSetActivityAttributes>) -> String {
+        showsAutomaticNextSet(context)
+            ? context.state.nextExerciseKind ?? context.state.exerciseKind
+            : context.state.exerciseKind
+    }
+
+    private func displayedTargetReps(for context: ActivityViewContext<DamSetActivityAttributes>) -> Int {
+        showsAutomaticNextSet(context)
+            ? context.state.nextTargetReps ?? context.state.targetReps
+            : context.state.targetReps
+    }
+
+    private func displayedWeight(for context: ActivityViewContext<DamSetActivityAttributes>) -> Double {
+        showsAutomaticNextSet(context)
+            ? context.state.nextTargetWeight ?? context.state.actualWeight
+            : context.state.actualWeight
+    }
+
+    private func displayedActualReps(for context: ActivityViewContext<DamSetActivityAttributes>) -> Int {
+        showsAutomaticNextSet(context)
+            ? displayedTargetReps(for: context)
+            : context.state.actualReps
     }
 
     /// Lock Screen Live Activities are capped at roughly 160pt high. Keep this
@@ -130,21 +184,21 @@ struct DamSetLiveActivityWidget: Widget {
 
     private func compactHeader(context: ActivityViewContext<DamSetActivityAttributes>) -> some View {
         HStack(spacing: 9) {
-            Image(systemName: phaseSymbol(for: context.state))
+            Image(systemName: phaseSymbol(for: context))
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(phaseColor(for: context))
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 2) {
-                Text(context.state.exerciseName)
+                Text(displayedExerciseName(for: context))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(TrainingPalette.primary)
                     .lineLimit(1)
-                Text(loadSummary(for: context.state))
+                Text(loadSummary(for: context))
                     .font(.caption2)
                     .foregroundStyle(TrainingPalette.secondary)
             }
             Spacer()
-            Text("Set \(context.state.currentSetIndex)/\(context.state.totalPlannedSets)")
+            Text("Set \(displayedSetIndex(for: context))/\(context.state.totalPlannedSets)")
                 .font(.caption.weight(.bold))
                 .monospacedDigit()
                 .foregroundStyle(TrainingPalette.secondary)
@@ -156,7 +210,16 @@ struct DamSetLiveActivityWidget: Widget {
 
     private func statusLine(context: ActivityViewContext<DamSetActivityAttributes>) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            if restIsReady(context) {
+            if showsAutomaticNextSet(context) {
+                Label("Start now", systemImage: "figure.strengthtraining.traditional")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(TrainingPalette.completed)
+                Spacer()
+                Text("Target \(displayedTargetReps(for: context))")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(TrainingPalette.secondary)
+                    .monospacedDigit()
+            } else if restIsReady(context) {
                 Label("Rest complete", systemImage: "checkmark.circle.fill")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(TrainingPalette.completed)
@@ -202,7 +265,7 @@ struct DamSetLiveActivityWidget: Widget {
             .buttonStyle(.plain)
             .accessibilityLabel("Decrease reps")
 
-            Text("\(context.state.actualReps)")
+            Text("\(displayedActualReps(for: context))")
                 .font(.system(size: 30, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .contentTransition(.numericText())
@@ -219,7 +282,7 @@ struct DamSetLiveActivityWidget: Widget {
             .buttonStyle(.plain)
             .accessibilityLabel("Increase reps")
 
-            if context.state.phase == LockScreenPhase.performingSet.rawValue {
+            if context.state.phase == LockScreenPhase.performingSet.rawValue || showsAutomaticNextSet(context) {
                 Button(intent: CompleteSetIntent(sessionId: context.attributes.sessionId)) {
                     Label("Done", systemImage: "checkmark")
                         .font(.headline.weight(.bold))
@@ -243,24 +306,30 @@ struct DamSetLiveActivityWidget: Widget {
         }
     }
 
-    private func loadSummary(for state: DamSetActivityAttributes.ContentState) -> String {
-        if state.exerciseKind == ExerciseKind.bodyweight.rawValue {
-            return "Bodyweight · target \(state.targetReps) reps"
+    private func loadSummary(for context: ActivityViewContext<DamSetActivityAttributes>) -> String {
+        if displayedExerciseKind(for: context) == ExerciseKind.bodyweight.rawValue {
+            return "Bodyweight · target \(displayedTargetReps(for: context)) reps"
         }
-        return "\(state.actualWeight.formatted()) kg · target \(state.targetReps) reps"
+        return "\(displayedWeight(for: context).formatted()) kg · target \(displayedTargetReps(for: context)) reps"
     }
 
-    private func phaseSymbol(for state: DamSetActivityAttributes.ContentState) -> String {
-        if state.phase == LockScreenPhase.readyForNextSet.rawValue {
+    private func phaseSymbol(for context: ActivityViewContext<DamSetActivityAttributes>) -> String {
+        if showsAutomaticNextSet(context) {
+            return "figure.strengthtraining.traditional"
+        }
+        if context.state.phase == LockScreenPhase.readyForNextSet.rawValue {
             return "checkmark.circle.fill"
         }
-        if isResting(state) {
+        if isResting(context.state) {
             return "timer"
         }
         return "figure.strengthtraining.traditional"
     }
 
     private func phaseColor(for context: ActivityViewContext<DamSetActivityAttributes>) -> Color {
+        if showsAutomaticNextSet(context) {
+            return TrainingPalette.completed
+        }
         if restIsReady(context) {
             return TrainingPalette.completed
         }

@@ -16,8 +16,29 @@ public struct DamSetActivityAttributes: ActivityAttributes {
         public var restRemainingSeconds: Int
         public var resumeAt: Date?
         public var phase: String
+        /// The next set is carried into a rest Activity so its view can switch
+        /// itself at the deadline even while iOS has suspended the app.
+        public var nextExerciseName: String?
+        public var nextExerciseKind: String?
+        public var nextTargetReps: Int?
+        public var nextTargetWeight: Double?
 
-        public init(exerciseName: String, exerciseKind: String, currentSetIndex: Int, totalPlannedSets: Int, targetReps: Int, actualReps: Int, actualWeight: Double, restRemainingSeconds: Int, resumeAt: Date?, phase: String) {
+        public init(
+            exerciseName: String,
+            exerciseKind: String,
+            currentSetIndex: Int,
+            totalPlannedSets: Int,
+            targetReps: Int,
+            actualReps: Int,
+            actualWeight: Double,
+            restRemainingSeconds: Int,
+            resumeAt: Date?,
+            phase: String,
+            nextExerciseName: String? = nil,
+            nextExerciseKind: String? = nil,
+            nextTargetReps: Int? = nil,
+            nextTargetWeight: Double? = nil
+        ) {
             self.exerciseName = exerciseName
             self.exerciseKind = exerciseKind
             self.currentSetIndex = currentSetIndex
@@ -28,9 +49,13 @@ public struct DamSetActivityAttributes: ActivityAttributes {
             self.restRemainingSeconds = restRemainingSeconds
             self.resumeAt = resumeAt
             self.phase = phase
+            self.nextExerciseName = nextExerciseName
+            self.nextExerciseKind = nextExerciseKind
+            self.nextTargetReps = nextTargetReps
+            self.nextTargetWeight = nextTargetWeight
         }
 
-        public init(_ state: LockScreenState) {
+        public init(_ state: LockScreenState, nextSet: PlannedSet? = nil) {
             self.init(
                 exerciseName: state.exerciseName,
                 exerciseKind: state.exerciseKind.rawValue,
@@ -41,14 +66,23 @@ public struct DamSetActivityAttributes: ActivityAttributes {
                 actualWeight: state.actualWeight,
                 restRemainingSeconds: state.restRemainingSeconds,
                 resumeAt: state.resumeAt,
-                phase: state.phase.rawValue
+                phase: state.phase.rawValue,
+                nextExerciseName: nextSet?.exerciseName,
+                nextExerciseKind: nextSet?.exerciseKind.rawValue,
+                nextTargetReps: nextSet?.targetReps,
+                nextTargetWeight: nextSet?.targetWeight
             )
+        }
+
+        public init(_ session: WorkoutRoutineSession) {
+            self.init(session.lockScreenState, nextSet: session.nextPlannedSet)
         }
 
         private enum CodingKeys: String, CodingKey {
             case exerciseName, exerciseKind, currentSetIndex, totalPlannedSets
             case targetReps, actualReps, actualWeight, restRemainingSeconds
             case resumeAt, phase
+            case nextExerciseName, nextExerciseKind, nextTargetReps, nextTargetWeight
         }
 
         public init(from decoder: Decoder) throws {
@@ -64,7 +98,11 @@ public struct DamSetActivityAttributes: ActivityAttributes {
                 actualWeight: try container.decode(Double.self, forKey: .actualWeight),
                 restRemainingSeconds: try container.decode(Int.self, forKey: .restRemainingSeconds),
                 resumeAt: try container.decodeIfPresent(Date.self, forKey: .resumeAt),
-                phase: try container.decode(String.self, forKey: .phase)
+                phase: try container.decode(String.self, forKey: .phase),
+                nextExerciseName: try container.decodeIfPresent(String.self, forKey: .nextExerciseName),
+                nextExerciseKind: try container.decodeIfPresent(String.self, forKey: .nextExerciseKind),
+                nextTargetReps: try container.decodeIfPresent(Int.self, forKey: .nextTargetReps),
+                nextTargetWeight: try container.decodeIfPresent(Double.self, forKey: .nextTargetWeight)
             )
         }
     }
@@ -98,7 +136,7 @@ public enum WorkoutSessionSync {
         let lockState = session.lockScreenState
         let staleDate = lockState.phase == .resting ? lockState.resumeAt : nil
         return ActivityContent(
-            state: DamSetActivityAttributes.ContentState(lockState),
+            state: DamSetActivityAttributes.ContentState(session),
             staleDate: staleDate
         )
     }

@@ -65,7 +65,7 @@ final class WorkoutEngineTests: XCTestCase {
         XCTAssertEqual(session.lockScreenState.phase, .resting)
     }
 
-    func testActualWeightIsCanonicalAndCorrectableDuringRestAndReady() throws {
+    func testActualWeightIsCanonicalDuringRestAndAfterAutomaticNextSet() throws {
         let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
         let engine = WorkoutEngine()
         let now = Date(timeIntervalSince1970: 100)
@@ -84,11 +84,13 @@ final class WorkoutEngineTests: XCTestCase {
         let resumeAt = try XCTUnwrap(session.lockScreenState.resumeAt)
         engine.refresh(session: &session, now: resumeAt)
         try engine.adjustActualWeight(session: &session, delta: 0.5)
-        XCTAssertEqual(session.lockScreenState.phase, .readyForNextSet)
-        XCTAssertEqual(session.completedSets.last?.actualWeight, routine.plannedSets[0].targetWeight + 2)
+        XCTAssertEqual(session.lockScreenState.phase, .performingSet)
+        XCTAssertEqual(session.currentSetIndex, 2)
+        XCTAssertEqual(session.lockScreenState.actualWeight, routine.plannedSets[1].targetWeight + 0.5)
+        XCTAssertEqual(session.completedSets.last?.actualWeight, routine.plannedSets[0].targetWeight + 1.5)
     }
 
-    func testRestCountdownBecomesReadyAndAdvancesToNextSet() throws {
+    func testRestCountdownAutomaticallyStartsNextSet() throws {
         let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
         let engine = WorkoutEngine()
         let now = Date(timeIntervalSince1970: 100)
@@ -96,13 +98,10 @@ final class WorkoutEngineTests: XCTestCase {
         try engine.completeCurrentSet(session: &session, now: now)
 
         engine.updateRest(session: &session, now: now.addingTimeInterval(TimeInterval(routine.plannedSets[0].restDurationSeconds)))
-        XCTAssertEqual(session.lockScreenState.phase, .readyForNextSet)
-        XCTAssertEqual(session.lockScreenState.restRemainingSeconds, 0)
-
-        try engine.advanceToNextSet(session: &session)
         XCTAssertEqual(session.sessionStatus, .active)
         XCTAssertEqual(session.currentSetIndex, 2)
         XCTAssertEqual(session.lockScreenState.phase, .performingSet)
+        XCTAssertEqual(session.lockScreenState.restRemainingSeconds, 0)
         XCTAssertNil(session.lockScreenState.resumeAt)
     }
 
@@ -118,7 +117,8 @@ final class WorkoutEngineTests: XCTestCase {
         let engine = WorkoutEngine()
         var session = try engine.startSession(routine: routine, now: Date(timeIntervalSince1970: 0), sessionId: "s")
         try engine.completeCurrentSet(session: &session, now: Date(timeIntervalSince1970: 1))
-        try engine.advanceToNextSet(session: &session)
+        XCTAssertEqual(session.currentSetIndex, 2)
+        XCTAssertEqual(session.lockScreenState.phase, .performingSet)
         try engine.completeCurrentSet(session: &session, now: Date(timeIntervalSince1970: 2))
 
         let summary = engine.summarize(session: session, endedAt: Date(timeIntervalSince1970: 3))
@@ -165,7 +165,7 @@ final class WorkoutEngineTests: XCTestCase {
         XCTAssertEqual(session.lockScreenState.phase, .resting)
     }
 
-    func testAddingSetAfterCompletedSessionReopensItReadyToAdvance() throws {
+    func testAddingSetAfterCompletedSessionStartsItImmediately() throws {
         let routine = RoutineTemplate(
             routineId: "one-set-add",
             routineName: "One Set",
@@ -185,17 +185,12 @@ final class WorkoutEngineTests: XCTestCase {
             restDurationSeconds: 60
         )
 
-        XCTAssertEqual(session.sessionStatus, .resting)
-        XCTAssertEqual(session.lockScreenState.phase, .readyForNextSet)
+        XCTAssertEqual(session.sessionStatus, .active)
+        XCTAssertEqual(session.lockScreenState.phase, .performingSet)
         XCTAssertNil(session.workoutEndTime)
-        XCTAssertEqual(session.currentSetIndex, 1)
-        XCTAssertEqual(session.nextPlannedSet?.exerciseName, "Back-off Squat")
-        XCTAssertEqual(session.lockScreenState.totalPlannedSets, 2)
-
-        try engine.advanceToNextSet(session: &session)
         XCTAssertEqual(session.currentSetIndex, 2)
         XCTAssertEqual(session.currentPlannedSet?.exerciseName, "Back-off Squat")
-        XCTAssertEqual(session.lockScreenState.phase, .performingSet)
+        XCTAssertEqual(session.lockScreenState.totalPlannedSets, 2)
     }
 
     func testAdjustRestUsesWallClockRemainingAndUpdatesDeadline() throws {
@@ -217,7 +212,7 @@ final class WorkoutEngineTests: XCTestCase {
         XCTAssertEqual(session.lockScreenState.phase, .resting)
     }
 
-    func testAdjustRestCanReachReadyAndAddTimeAgain() throws {
+    func testAdjustRestToZeroAutomaticallyStartsNextSet() throws {
         let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
         let engine = WorkoutEngine()
         var session = try engine.startSession(routine: routine)
@@ -228,15 +223,10 @@ final class WorkoutEngineTests: XCTestCase {
         try engine.adjustRest(session: &session, deltaSeconds: -999, now: adjustmentTime)
 
         XCTAssertEqual(session.lockScreenState.restRemainingSeconds, 0)
-        XCTAssertEqual(session.lockScreenState.resumeAt, adjustmentTime)
-        XCTAssertEqual(session.lockScreenState.phase, .readyForNextSet)
-
-        let extendedAt = Date(timeIntervalSince1970: 140)
-        try engine.adjustRest(session: &session, deltaSeconds: 30, now: extendedAt)
-
-        XCTAssertEqual(session.lockScreenState.restRemainingSeconds, 30)
-        XCTAssertEqual(session.lockScreenState.resumeAt, Date(timeIntervalSince1970: 170))
-        XCTAssertEqual(session.lockScreenState.phase, .resting)
+        XCTAssertNil(session.lockScreenState.resumeAt)
+        XCTAssertEqual(session.sessionStatus, .active)
+        XCTAssertEqual(session.currentSetIndex, 2)
+        XCTAssertEqual(session.lockScreenState.phase, .performingSet)
     }
 
     func testUndoLastCompletedSetRestoresPerformingProgress() throws {
@@ -372,7 +362,7 @@ final class WorkoutEngineTests: XCTestCase {
         XCTAssertEqual(try reloaded.allSummaries(), [second])
     }
 
-    func testRefreshMarksElapsedRestReadyWithoutAdvancing() throws {
+    func testRefreshAutomaticallyStartsNextSetWhenRestExpires() throws {
         let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
         let engine = WorkoutEngine()
         var session = try engine.startSession(routine: routine, now: Date(timeIntervalSince1970: 0))
@@ -381,11 +371,6 @@ final class WorkoutEngineTests: XCTestCase {
 
         engine.refresh(session: &session, now: resumeAt)
 
-        XCTAssertEqual(session.currentSetIndex, 1)
-        XCTAssertEqual(session.lockScreenState.phase, .readyForNextSet)
-        XCTAssertEqual(session.sessionStatus, .resting)
-
-        try engine.advanceToNextSet(session: &session)
         XCTAssertEqual(session.currentSetIndex, 2)
         XCTAssertEqual(session.lockScreenState.phase, .performingSet)
         XCTAssertEqual(session.sessionStatus, .active)
@@ -492,7 +477,7 @@ final class WorkoutEngineTests: XCTestCase {
         )
     }
 
-    func testRestCuePlanCancelsWhenRestIsMadeReady() throws {
+    func testRestCuePlanCancelsWhenRestAutomaticallyStartsNextSet() throws {
         let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
         let engine = WorkoutEngine()
         var session = try engine.startSession(routine: routine)
@@ -504,7 +489,8 @@ final class WorkoutEngineTests: XCTestCase {
             now: Date(timeIntervalSince1970: 110)
         )
 
-        XCTAssertEqual(session.lockScreenState.phase, .readyForNextSet)
+        XCTAssertEqual(session.lockScreenState.phase, .performingSet)
+        XCTAssertEqual(session.sessionStatus, .active)
         XCTAssertEqual(RestCueScheduler.plan(for: session), .cancel)
     }
 

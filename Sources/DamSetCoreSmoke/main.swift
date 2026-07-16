@@ -30,10 +30,8 @@ expect(session.lockScreenState.resumeAt != nil, "resting state has resumeAt")
 if let resumeAt = session.lockScreenState.resumeAt {
     engine.updateRest(session: &session, now: resumeAt)
 }
-expect(session.lockScreenState.phase == .readyForNextSet, "rest reaches ready state")
-try engine.advanceToNextSet(session: &session)
-expect(session.currentSetIndex == 2, "advance moves to second set")
-expect(session.lockScreenState.phase == .performingSet, "next set returns to performing")
+expect(session.currentSetIndex == 2, "rest automatically moves to second set")
+expect(session.lockScreenState.phase == .performingSet, "rest automatically starts the next set")
 
 engine.addSessionScopedSet(session: &session, exerciseName: "Lateral Raise", targetWeight: 8, targetReps: 15, restDurationSeconds: 45)
 expect(session.nextPlannedSet?.manuallyAdded == true, "manual set is inserted after the current set")
@@ -58,7 +56,7 @@ if let resumeAt = session.lockScreenState.resumeAt {
     expect(session.lockScreenState.phase == .resting, "still resting mid-countdown")
     engine.updateRest(session: &session, now: resumeAt)
 }
-try engine.advanceToNextSet(session: &session)
+expect(session.lockScreenState.phase == .performingSet, "expired rest automatically starts the next set")
 
 // Finish the remaining sets and verify the summary invariants.
 try engine.completeCurrentSet(session: &session, now: Date(timeIntervalSince1970: 30))
@@ -86,18 +84,15 @@ let listed = try reloaded.allSummaries()
 expect(listed.count == 1, "saving the same sessionId upserts instead of duplicating")
 try? FileManager.default.removeItem(at: storeURL)
 
-// Engine refresh only updates wall-clock rest. Advancing is an explicit action
-// so the app and Lock Screen cannot silently skip the ready state.
+// Engine refresh updates wall-clock rest and automatically moves into the
+// next set once the deadline has elapsed.
 var refreshSession = try engine.startSession(routine: routine, now: Date(timeIntervalSince1970: 0), sessionId: "refresh")
 try engine.completeCurrentSet(session: &refreshSession, now: Date(timeIntervalSince1970: 5))
 if let resumeAt = refreshSession.lockScreenState.resumeAt {
     engine.refresh(session: &refreshSession, now: resumeAt)
 }
-expect(refreshSession.currentSetIndex == 1, "refresh keeps the completed set selected")
-expect(refreshSession.lockScreenState.phase == .readyForNextSet, "refresh exposes the ready state")
-try engine.advanceToNextSet(session: &refreshSession)
-expect(refreshSession.currentSetIndex == 2, "explicit advance moves to the next set")
-expect(refreshSession.lockScreenState.phase == .performingSet, "explicit advance starts the next set")
+expect(refreshSession.currentSetIndex == 2, "refresh moves to the next set")
+expect(refreshSession.lockScreenState.phase == .performingSet, "refresh automatically starts the next set")
 
 // Active session store round-trip used for app <-> Live Activity intent sharing.
 let sessionURL = FileManager.default.temporaryDirectory
