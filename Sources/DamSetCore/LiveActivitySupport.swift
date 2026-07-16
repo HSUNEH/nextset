@@ -240,9 +240,10 @@ public enum WorkoutSessionSync {
         }
     }
 
-    /// Live Activity content is the immediate feedback path for lock-screen
-    /// taps. Refresh notification work only after that content has been sent,
-    /// so scheduling IPC never sits in front of the visible state change.
+    /// Keep the countdown cue tied to the persisted deadline, rather than an
+    /// ActivityKit update. ActivityKit may coalesce or briefly delay an update
+    /// while the phone is locking; scheduling the cue first makes its T-3
+    /// countdown independent from that rendering work.
     fileprivate static func refreshRestCue(for session: WorkoutRoutineSession) {
         switch session.sessionStatus {
         case .completed, .cancelled:
@@ -308,8 +309,8 @@ private actor WorkoutSessionMutationGate {
                 barriers[session.sessionId] = .closed
             }
         }
-        await WorkoutSessionSync.updateLiveActivity(for: session)
         WorkoutSessionSync.refreshRestCue(for: session)
+        await WorkoutSessionSync.updateLiveActivity(for: session)
     }
 
     /// Corrections change only the recorded reps. Keep the existing rest cue
@@ -412,8 +413,8 @@ private actor WorkoutSessionMutationGate {
             barriers[session.sessionId] = previousBarrier ?? .completed
             throw error
         }
-        await WorkoutSessionSync.updateLiveActivity(for: session)
         WorkoutSessionSync.refreshRestCue(for: session)
+        await WorkoutSessionSync.updateLiveActivity(for: session)
         if barriers[session.sessionId] == .reopening {
             barriers.removeValue(forKey: session.sessionId)
         }

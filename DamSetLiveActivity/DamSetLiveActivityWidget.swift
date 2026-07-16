@@ -106,19 +106,25 @@ struct DamSetLiveActivityWidget: Widget {
     }
 
     /// WidgetKit marks a Live Activity stale at the rest deadline even if iOS
-    /// has suspended the app. Carrying the next planned set in ContentState
-    /// lets the Lock Screen immediately present it without a manual "Next".
+    /// has suspended the app. `isStale` is only advisory, though, and can be
+    /// reflected a beat late on the Lock Screen. Use the persisted deadline as
+    /// the source of truth so 0:00 renders the following set immediately.
     private func showsAutomaticNextSet(_ context: ActivityViewContext<DamSetActivityAttributes>) -> Bool {
         context.state.phase == LockScreenPhase.resting.rawValue
-            && context.isStale
+            && restHasExpired(context)
             && context.state.nextExerciseName != nil
     }
 
     private func restIsReady(_ context: ActivityViewContext<DamSetActivityAttributes>) -> Bool {
         context.state.phase == LockScreenPhase.readyForNextSet.rawValue ||
             (context.state.phase == LockScreenPhase.resting.rawValue
-                && context.isStale
+                && restHasExpired(context)
                 && !showsAutomaticNextSet(context))
+    }
+
+    private func restHasExpired(_ context: ActivityViewContext<DamSetActivityAttributes>) -> Bool {
+        guard let resumeAt = context.state.resumeAt else { return context.isStale }
+        return Date.now >= resumeAt
     }
 
     private func displayedExerciseName(for context: ActivityViewContext<DamSetActivityAttributes>) -> String {
@@ -160,6 +166,16 @@ struct DamSetLiveActivityWidget: Widget {
     /// deliberately to two information rows and one control row so iOS never
     /// clips the actions behind the flashlight/camera controls.
     private func lockScreenView(context: ActivityViewContext<DamSetActivityAttributes>) -> some View {
+        // `Text(timerInterval:)` keeps the number moving, but it does not
+        // re-evaluate surrounding conditional views at zero. Request an exact
+        // timeline refresh at the deadline so the card switches from Rest to
+        // the next set at the same moment as the final countdown cue.
+        TimelineView(.explicit(context.state.resumeAt.map { [$0] } ?? [])) { _ in
+            lockScreenContent(context: context)
+        }
+    }
+
+    private func lockScreenContent(context: ActivityViewContext<DamSetActivityAttributes>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             compactHeader(context: context)
 

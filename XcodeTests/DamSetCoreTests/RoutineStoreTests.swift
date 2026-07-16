@@ -117,6 +117,41 @@ final class RoutineStoreTests: XCTestCase {
             XCTAssertEqual(routine.plannedSets.first?.exerciseKind, .weighted)
             XCTAssertEqual(routine.plannedSets.first?.targetWeight, 62.5)
             XCTAssertEqual(routine.plannedSets.first?.manuallyAdded, false)
+            XCTAssertEqual(routine.defaultRestDurationSeconds, 90)
+        }
+    }
+
+    func testRoutineRestDefaultRoundTripsAlongsideExerciseOverrides() throws {
+        try withStore(seedRoutines: []) { store, fileURL in
+            let routine = RoutineTemplate(
+                routineId: "custom-rest",
+                routineName: "Custom Rest",
+                defaultRestDurationSeconds: 105,
+                plannedSets: [
+                    PlannedSet(
+                        setId: "custom-rest-1",
+                        exerciseName: "Bench Press",
+                        targetWeight: 60,
+                        targetReps: 8,
+                        restDurationSeconds: 105
+                    ),
+                    PlannedSet(
+                        setId: "custom-rest-2",
+                        exerciseName: "Lateral Raise",
+                        targetWeight: 10,
+                        targetReps: 12,
+                        restDurationSeconds: 60
+                    )
+                ]
+            )
+
+            try store.upsert(routine)
+
+            let reloaded = try XCTUnwrap(
+                FileRoutineTemplateStore(fileURL: fileURL).loadAll().first
+            )
+            XCTAssertEqual(reloaded.defaultRestDurationSeconds, 105)
+            XCTAssertEqual(reloaded.plannedSets.map(\.restDurationSeconds), [105, 60])
         }
     }
 
@@ -239,7 +274,7 @@ final class RoutineStoreTests: XCTestCase {
         XCTAssertEqual(Set(firstIds).count, 3)
     }
 
-    func testExercisePlanDoesNotChangeRoutineTemplateJSONSchema() throws {
+    func testExercisePlanPreservesRoutineTemplatePersistenceShape() throws {
         let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
         let plans = routine.plannedSets.groupedExercisePlans()
         var edited = routine
@@ -249,7 +284,10 @@ final class RoutineStoreTests: XCTestCase {
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let plannedSets = try XCTUnwrap(json["plannedSets"] as? [[String: Any]])
 
-        XCTAssertEqual(Set(json.keys), ["routineId", "routineName", "emoji", "plannedSets"])
+        XCTAssertEqual(
+            Set(json.keys),
+            ["routineId", "routineName", "emoji", "defaultRestDurationSeconds", "plannedSets"]
+        )
         XCTAssertNil(json["exercisePlans"])
         XCTAssertNil(plannedSets.first?["setCount"])
         XCTAssertEqual(edited, routine)

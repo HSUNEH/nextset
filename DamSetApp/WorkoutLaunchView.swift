@@ -189,6 +189,7 @@ struct WorkoutLaunchView: View {
             routineId: routine.routineId,
             routineName: routine.routineName,
             emoji: routine.emoji,
+            defaultRestDurationSeconds: routine.defaultRestDurationSeconds,
             plannedSets: routine.plannedSets.filter {
                 selectedExerciseNames.contains($0.exerciseName)
             }

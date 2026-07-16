@@ -45,6 +45,9 @@ public struct RoutineTemplate: Identifiable, Codable, Equatable, Sendable {
     public var routineId: String
     public var routineName: String
     public var emoji: String?
+    /// The interval offered to new exercises in the routine editor. Individual
+    /// planned sets may intentionally override this value.
+    public var defaultRestDurationSeconds: Int
     public var plannedSets: [PlannedSet]
 
     public var id: String { routineId }
@@ -53,11 +56,16 @@ public struct RoutineTemplate: Identifiable, Codable, Equatable, Sendable {
         routineId: String,
         routineName: String,
         emoji: String? = nil,
+        defaultRestDurationSeconds: Int? = nil,
         plannedSets: [PlannedSet]
     ) {
         self.routineId = routineId
         self.routineName = routineName
         self.emoji = emoji
+        self.defaultRestDurationSeconds = max(
+            0,
+            defaultRestDurationSeconds ?? plannedSets.first?.restDurationSeconds ?? 90
+        )
         self.plannedSets = plannedSets
     }
 
@@ -65,6 +73,7 @@ public struct RoutineTemplate: Identifiable, Codable, Equatable, Sendable {
         case routineId
         case routineName
         case emoji
+        case defaultRestDurationSeconds
         case plannedSets
     }
 
@@ -76,6 +85,10 @@ public struct RoutineTemplate: Identifiable, Codable, Equatable, Sendable {
             routineId: try container.decode(String.self, forKey: .routineId),
             routineName: try container.decode(String.self, forKey: .routineName),
             emoji: try container.decodeIfPresent(String.self, forKey: .emoji),
+            defaultRestDurationSeconds: try container.decodeIfPresent(
+                Int.self,
+                forKey: .defaultRestDurationSeconds
+            ),
             plannedSets: try container.decode([PlannedSet].self, forKey: .plannedSets)
         )
     }

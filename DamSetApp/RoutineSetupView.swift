@@ -8,10 +8,13 @@ struct RoutineSetupView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draftEmoji: String
     @State private var draftName: String
+    @State private var draftDefaultRestSeconds: Int
     @State private var draftExercises: [EditableExercisePlan]
     @State private var exerciseEditor: ExerciseEditorContext?
     @State private var routinePendingChooser: RoutineTemplate?
     @State private var showDeleteConfirmation = false
+    @State private var showRoutineRestEntry = false
+    @State private var routineRestDraft = ""
 #if os(iOS)
     @State private var listEditMode: EditMode = .inactive
 #endif
@@ -26,6 +29,7 @@ struct RoutineSetupView: View {
         self.onChooseWorkout = onChooseWorkout
         _draftEmoji = State(initialValue: routine.emoji ?? "🏋️")
         _draftName = State(initialValue: routine.routineName)
+        _draftDefaultRestSeconds = State(initialValue: routine.defaultRestDurationSeconds)
         _draftExercises = State(
             initialValue: routine.plannedSets
                 .groupedExercisePlans()
@@ -151,12 +155,82 @@ struct RoutineSetupView: View {
                     .foregroundStyle(.primary)
                     .tint(DamSetDesign.accent)
             }
+
+            Divider()
+                .overlay(DamSetDesign.steelMuted.opacity(0.7))
+
+            routineRestControl
+
             Text("\(totalSetCount) sets · \(totalRestMinutes) rest")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .cardSurface(cornerRadius: 20)
+    }
+
+    private var routineRestControl: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Label("Rest between sets", systemImage: "timer")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(routineRestSubtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 4)
+
+            routineRestStepButton(symbol: "minus") {
+                applyRoutineRest(routineRestControlSeconds - 15)
+            }
+
+            Button {
+                routineRestDraft = routineRestControlSeconds.minuteSecondText
+                showRoutineRestEntry = true
+            } label: {
+                Text(routineRestLabel)
+                    .font(.subheadline.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .frame(minWidth: 56, minHeight: 42)
+                    .padding(.horizontal, 4)
+            }
+            .buttonStyle(GymCompactStepperButtonStyle())
+            .accessibilityLabel("Rest between sets \(routineRestAccessibilityValue)")
+            .accessibilityHint("Double-tap to enter a rest time for every exercise")
+
+            routineRestStepButton(symbol: "plus") {
+                applyRoutineRest(routineRestControlSeconds + 15)
+            }
+        }
+        .alert("Rest between sets", isPresented: $showRoutineRestEntry) {
+            TextField("mm:ss", text: $routineRestDraft)
+            Button("Apply") {
+                guard let seconds = parsedRestSeconds(routineRestDraft) else { return }
+                applyRoutineRest(seconds)
+            }
+            .disabled(parsedRestSeconds(routineRestDraft) == nil)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Enter seconds or mm:ss. This changes every exercise in this routine.")
+        }
+    }
+
+    private func routineRestStepButton(symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(DamSetDesign.accent)
+                .frame(width: 42, height: 42)
+        }
+        .buttonStyle(GymCompactStepperButtonStyle())
+        .buttonRepeatBehavior(.enabled)
+        .accessibilityLabel("\(symbol == "minus" ? "Decrease" : "Increase") rest between sets")
     }
 
     private var exercisesEditor: some View {
@@ -272,6 +346,47 @@ struct RoutineSetupView: View {
         return "\(seconds / 60)m"
     }
 
+    private var hasRestOverrides: Bool {
+        draftExercises.contains { $0.restSeconds != draftDefaultRestSeconds }
+    }
+
+    /// This is persisted separately from each exercise so a user can keep an
+    /// intentional per-exercise override while new exercises inherit the
+    /// routine-wide interval.
+    private var routineRestControlSeconds: Int {
+        draftDefaultRestSeconds
+    }
+
+    private var routineRestLabel: String {
+        hasRestOverrides ? "Mixed" : routineRestControlSeconds.minuteSecondText
+    }
+
+    private var routineRestSubtitle: String {
+        if draftExercises.isEmpty {
+            return "Default for new exercises"
+        }
+        return hasRestOverrides
+            ? "Default \(routineRestControlSeconds.minuteSecondText) · some exercises override"
+            : "Applies to every exercise"
+    }
+
+    private var routineRestAccessibilityValue: String {
+        if hasRestOverrides {
+            return "mixed. Default \(routineRestControlSeconds.minuteSecondText)"
+        }
+        return routineRestControlSeconds == 0 ? "no rest" : routineRestControlSeconds.minuteSecondText
+    }
+
+    private func applyRoutineRest(_ seconds: Int) {
+        let normalizedSeconds = min(86_400, max(0, seconds))
+        withAnimation(.snappy) {
+            draftDefaultRestSeconds = normalizedSeconds
+            for index in draftExercises.indices {
+                draftExercises[index].restSeconds = normalizedSeconds
+            }
+        }
+    }
+
     private func makeRoutine() -> RoutineTemplate? {
         guard canStart else { return nil }
 
@@ -285,6 +400,7 @@ struct RoutineSetupView: View {
             routineId: routine.routineId,
             routineName: draftName.trimmingCharacters(in: .whitespacesAndNewlines),
             emoji: normalizedEmoji,
+            defaultRestDurationSeconds: draftDefaultRestSeconds,
             plannedSets: plans.expandedPlannedSets()
         )
     }
@@ -310,7 +426,10 @@ struct RoutineSetupView: View {
     private func presentNewExerciseEditor() {
         exerciseEditor = ExerciseEditorContext(
             existingExerciseID: nil,
-            exercise: EditableExercisePlan(exerciseName: "")
+            exercise: EditableExercisePlan(
+                exerciseName: "",
+                restSeconds: routineRestControlSeconds
+            )
         )
     }
 
@@ -506,6 +625,20 @@ private struct CompactExerciseRow: View {
     }
 }
 
+private func parsedRestSeconds(_ rawValue: String) -> Int? {
+    let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    let parts = trimmed.split(separator: ":", omittingEmptySubsequences: false)
+    let seconds: Int?
+    if parts.count == 2,
+       let minutes = Int(parts[0]),
+       let remainder = Int(parts[1]) {
+        seconds = min(max(0, minutes), 1_440) * 60 + min(max(0, remainder), 59)
+    } else {
+        seconds = Int(trimmed)
+    }
+    return seconds.map { min(86_400, max(0, $0)) }
+}
+
 private struct EditableExerciseCard: View {
     @Binding var exercise: EditableExercisePlan
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -627,16 +760,8 @@ private struct EditableExerciseCard: View {
     }
 
     private func updateRest(_ rawValue: String) {
-        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parts = trimmed.split(separator: ":", omittingEmptySubsequences: false)
-        let seconds: Int?
-        if parts.count == 2, let minutes = Int(parts[0]), let remainder = Int(parts[1]) {
-            seconds = min(max(0, minutes), 1_440) * 60 + min(max(0, remainder), 59)
-        } else {
-            seconds = Int(trimmed)
-        }
-        guard let seconds else { return }
-        exercise.restSeconds = min(86_400, max(0, seconds))
+        guard let seconds = parsedRestSeconds(rawValue) else { return }
+        exercise.restSeconds = seconds
     }
 }
 
