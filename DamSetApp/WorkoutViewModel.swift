@@ -98,11 +98,22 @@ final class WorkoutViewModel {
         }
         do {
             try store.delete(sessionId: summary.sessionId)
-            savedSummaries.removeAll { $0.sessionId == summary.sessionId }
+
+            // File stores write synchronously, but keep the screen state tied
+            // to what was actually persisted rather than only removing the
+            // row optimistically. This prevents a deleted record from
+            // reappearing after the History tab is redrawn or foregrounded.
+            let persistedSummaries = try store.allSummaries()
+            guard !persistedSummaries.contains(where: { $0.sessionId == summary.sessionId }) else {
+                errorMessage = "Workout record could not be deleted. Please try again."
+                savedSummaries = persistedSummaries
+                return false
+            }
+
+            savedSummaries = persistedSummaries
             if lastSummary?.sessionId == summary.sessionId {
                 lastSummary = nil
             }
-            reloadSummaries()
             return true
         } catch {
             report(error, context: "Workout record could not be deleted")

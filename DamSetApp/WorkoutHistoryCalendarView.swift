@@ -12,6 +12,10 @@ struct WorkoutHistoryCalendarView: View {
     @State private var range: HistoryCalendarRange
     @State private var visibleDate: Date
     @State private var selectedDate: Date
+    // The parent refreshes this view from the store, but removing locally as
+    // well makes a confirmed delete immediately visible even while a
+    // navigation transition is in progress.
+    @State private var deletedSessionIDs: Set<String> = []
 
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
@@ -53,6 +57,12 @@ struct WorkoutHistoryCalendarView: View {
         .gymNavigationChrome()
         .onChange(of: range) { _, _ in
             visibleDate = selectedDate
+        }
+        .onChange(of: summaries.map(\.sessionId)) { _, incomingIDs in
+            // Once the parent has observed the persisted deletion, release
+            // the local tombstone. If another process genuinely re-creates a
+            // record later, it can appear again on the next refresh.
+            deletedSessionIDs.formIntersection(incomingIDs)
         }
     }
 
@@ -183,7 +193,7 @@ struct WorkoutHistoryCalendarView: View {
     private func dayButton(_ date: Date) -> some View {
         let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
         let isToday = calendar.isDateInToday(date)
-        let workoutCount = summaries(on: date).count
+        let workoutCount = visibleSummaries(on: date).count
 
         return Button {
             selectedDate = calendar.startOfDay(for: date)
@@ -247,9 +257,9 @@ struct WorkoutHistoryCalendarView: View {
                     NavigationLink {
                         WorkoutSummaryDetailView(
                             summary: summary,
-                            allSummaries: summaries,
+                            allSummaries: visibleSummaries,
                             onUpdate: updateSummary,
-                            onDelete: onDelete
+                            onDelete: deleteSummary
                         )
                     } label: {
                         WorkoutCalendarSummaryRow(
@@ -269,12 +279,12 @@ struct WorkoutHistoryCalendarView: View {
     private var emptyState: some View {
         ContentUnavailableView {
             Label(
-                summaries.isEmpty ? "No workout history yet" : "No workouts this day",
-                systemImage: summaries.isEmpty ? "calendar.badge.plus" : "calendar"
+                visibleSummaries.isEmpty ? "No workout history yet" : "No workouts this day",
+                systemImage: visibleSummaries.isEmpty ? "calendar.badge.plus" : "calendar"
             )
         } description: {
             Text(
-                summaries.isEmpty
+                visibleSummaries.isEmpty
                     ? "Completed workouts will appear on the calendar."
                     : "Choose a date marked with a red dot."
             )
@@ -284,8 +294,12 @@ struct WorkoutHistoryCalendarView: View {
     }
 
     private var selectedSummaries: [WorkoutSummary] {
-        summaries(on: selectedDate)
+        visibleSummaries(on: selectedDate)
             .sorted { $0.workoutEndTime > $1.workoutEndTime }
+    }
+
+    private var visibleSummaries: [WorkoutSummary] {
+        summaries.filter { !deletedSessionIDs.contains($0.sessionId) }
     }
 
     private var selectedDateSubtitle: String {
@@ -404,7 +418,7 @@ struct WorkoutHistoryCalendarView: View {
     }
 
     private func preferredSelection(in interval: DateInterval) -> Date {
-        if let latestWorkout = summaries
+        if let latestWorkout = visibleSummaries
             .map(\.workoutEndTime)
             .filter(interval.contains)
             .max() {
@@ -418,14 +432,20 @@ struct WorkoutHistoryCalendarView: View {
         return calendar.startOfDay(for: interval.start)
     }
 
-    private func summaries(on date: Date) -> [WorkoutSummary] {
-        summaries.filter { calendar.isDate($0.workoutEndTime, inSameDayAs: date) }
+    private func visibleSummaries(on date: Date) -> [WorkoutSummary] {
+        visibleSummaries.filter { calendar.isDate($0.workoutEndTime, inSameDayAs: date) }
     }
 
     private func updateSummary(_ summary: WorkoutSummary) -> Bool {
         guard onUpdate(summary) else { return false }
         selectedDate = calendar.startOfDay(for: summary.workoutEndTime)
         visibleDate = summary.workoutEndTime
+        return true
+    }
+
+    private func deleteSummary(_ summary: WorkoutSummary) -> Bool {
+        guard onDelete(summary) else { return false }
+        deletedSessionIDs.insert(summary.sessionId)
         return true
     }
 

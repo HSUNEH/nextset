@@ -166,7 +166,7 @@ struct RoutineSetupView: View {
         Button {
             saveAndStart()
         } label: {
-            Text("Choose Today's Workout")
+            Text("Save & Choose Workout")
                 .font(.headline)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, minHeight: 40)

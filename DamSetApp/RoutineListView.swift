@@ -4,6 +4,7 @@ import DamSetCore
 struct RoutineListView: View {
     @State var viewModel: WorkoutViewModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var launchRoutine: RoutineTemplate?
     @State private var routinePendingStart: RoutineTemplate?
     @State private var routinePendingChooser: RoutineTemplate?
@@ -121,7 +122,7 @@ struct RoutineListView: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(
                 title: "My Routines",
-                subtitle: "Edit the template here. Choose today's exercises when you start."
+                subtitle: "Edit a saved routine, or choose today's exercises and start."
             )
             if viewModel.catalog.routines.isEmpty {
                 ContentUnavailableView {
@@ -137,31 +138,10 @@ struct RoutineListView: View {
             } else {
                 VStack(spacing: 10) {
                     ForEach(viewModel.catalog.routines) { routine in
-                        HStack(spacing: 8) {
-                            NavigationLink {
-                                RoutineSetupView(
-                                    routine: routine,
-                                    viewModel: viewModel,
-                                    onChooseWorkout: queueSetupChooser
-                                )
-                            } label: {
-                                RoutineRow(routine: routine)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                launchRoutine = routine
-                            } label: {
-                                Image(systemName: "slider.horizontal.3")
-                                    .font(.body.weight(.bold))
-                                    .foregroundStyle(DamSetDesign.accent)
-                                    .frame(width: 44, height: 44)
-                            }
-                            .buttonStyle(GymMetalControlButtonStyle(shape: .circle))
-                            .accessibilityLabel("Choose today's exercises for \(routine.routineName)")
-                            .disabled(viewModel.activeSession != nil || viewModel.isBusy)
-
+                        VStack(alignment: .leading, spacing: 14) {
+                            RoutineRow(routine: routine)
+                            SteelBarDivider(accent: DamSetDesign.accent)
+                            routineActions(for: routine)
                         }
                         .cardSurface()
                         .contextMenu {
@@ -173,6 +153,54 @@ struct RoutineListView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func routineActions(for routine: RoutineTemplate) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: 10) {
+                editRoutineButton(for: routine)
+                startWorkoutButton(for: routine)
+            }
+        } else {
+            HStack(spacing: 10) {
+                editRoutineButton(for: routine)
+                startWorkoutButton(for: routine)
+            }
+        }
+    }
+
+    private func editRoutineButton(for routine: RoutineTemplate) -> some View {
+        NavigationLink {
+            RoutineSetupView(
+                routine: routine,
+                viewModel: viewModel,
+                onChooseWorkout: queueSetupChooser
+            )
+        } label: {
+            Label("Edit Routine", systemImage: "pencil")
+                .font(.subheadline.weight(.bold))
+                .frame(maxWidth: .infinity, minHeight: 48)
+        }
+        .buttonStyle(GymMetalControlButtonStyle(shape: .roundedRectangle))
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel("Edit routine \(routine.routineName)")
+        .accessibilityHint("Change the saved exercises and targets.")
+    }
+
+    private func startWorkoutButton(for routine: RoutineTemplate) -> some View {
+        Button {
+            launchRoutine = routine
+        } label: {
+            Label("Start Workout", systemImage: "play.fill")
+                .font(.subheadline.weight(.bold))
+                .frame(maxWidth: .infinity, minHeight: 48)
+        }
+        .buttonStyle(GymPrimaryButtonStyle())
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel("Start today's workout for \(routine.routineName)")
+        .accessibilityHint("Choose today's exercises before starting.")
+        .disabled(viewModel.activeSession != nil || viewModel.isBusy)
     }
 
     private var errorIsPresented: Binding<Bool> {
@@ -258,11 +286,7 @@ private struct RoutineRow: View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        routineIcon
-                        Spacer(minLength: 8)
-                        chevron
-                    }
+                    routineIcon
                     Text(routine.routineName)
                         .font(.headline)
                         .foregroundStyle(.primary)
@@ -281,9 +305,8 @@ private struct RoutineRow: View {
                             .minimumScaleFactor(0.85)
                         routineDetails
                     }
-                    Spacer(minLength: 8)
-                    chevron
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
@@ -321,12 +344,6 @@ private struct RoutineRow: View {
                 .lineLimit(2)
                 .minimumScaleFactor(0.85)
         }
-    }
-
-    private var chevron: some View {
-        Image(systemName: "chevron.right")
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(DamSetDesign.steel)
     }
 
     private func exerciseSummary(_ routine: RoutineTemplate) -> String {
