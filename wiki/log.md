@@ -66,3 +66,11 @@ tags: [agent-wiki, work-log]
 - Decisions: 화면 변형 선택 컨테이너는 자식 높이를 유지할 수 있으므로, 운동 제어 화면의 세로 기준점은 명시적으로 상단에 고정한다.
 - Verification: generic iOS `xcodebuild ... build` 성공, `devicectl device install app`과 `process launch` 성공.
 - Wiki: `wiki/log.md`
+
+## [2026-07-19] feature | 휴식 종료 예약 Activity와 운동 제어 정리
+
+- Scope: 운동 중 화면의 세트 여정·정보 배치·무게 조절을 다듬고, 휴식 종료 시 다음 세트 Live Activity를 시스템에 예약하도록 했다.
+- Actions: 두 Orca 워크트리 변경을 main에 merge했다. iOS 26의 예약 Activity 시작 API로 휴식 카드 종료와 다음 세트 카드 시작을 같은 `resumeAt`에 맡기고, 예약 성공 시 중복 로컬 종료 알림을 취소했다. 앱·잠금 화면의 무게 조절을 1kg 단위로 통일했다.
+- Decisions: 잠긴 상태의 다음 세트 전환은 서버나 앱 깨우기에 기대지 않고 ActivityKit 예약 시작을 우선하며, 예약 불가 시 기존 로컬 알림 경로를 유지한다.
+- Verification: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift test` 73개 통과, `xcrun swift run DamSetCoreSmoke` 통과, generic iOS `xcodebuild ... build` 성공, 연결 iPhone에 `devicectl device install app` 및 `process launch` 성공.
+- Wiki: `wiki/product.md`, `wiki/architecture.md`, `wiki/playbooks/device-live-activity.md`, `wiki/log.md`

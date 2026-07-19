@@ -89,8 +89,12 @@ activity의 변경을 무시한다.
 
 - 포그라운드: `InAppRestCuePlayer`가 짧은 결합 음원과 햅틱을 재생하고
   다른 오디오는 duck 후 복구한다.
-- 잠금/백그라운드: `RestCueScheduler`가 `resumeAt`에 맞춰 로컬 알림을
-  예약한다.
+- 잠금/백그라운드: iOS 26에서 Live Activity가 허용되면
+  `WorkoutSessionSync`가 `resumeAt`에 다음 세트 Activity를 예약 시작하고,
+  현재 휴식 카드는 같은 시각에 종료한다. 시스템이 예약을 받아들인 경우 그
+  Activity의 시작 알림음이 종료 신호를 담당하므로 중복 로컬 알림은 취소한다.
+  예약할 수 없는 경우 `RestCueScheduler`가 `resumeAt`에 맞춰 로컬 알림을
+  예약하는 폴백이다. 이 전환은 서버나 앱 깨우기에 의존하지 않는다.
 
 ## 저장
 
