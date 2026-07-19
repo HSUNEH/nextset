@@ -310,6 +310,42 @@ final class WorkoutEngineTests: XCTestCase {
         XCTAssertEqual(session.lockScreenState.phase, .resting)
     }
 
+    func testRestDurationAppliesWhenMovingBetweenDifferentExercises() throws {
+        let routine = RoutineTemplate(
+            routineId: "exercise-boundary-rest",
+            routineName: "Boundary Rest",
+            plannedSets: [
+                PlannedSet(
+                    setId: "bench-last",
+                    exerciseName: "Bench Press",
+                    targetWeight: 60,
+                    targetReps: 8,
+                    restDurationSeconds: 135
+                ),
+                PlannedSet(
+                    setId: "row-first",
+                    exerciseName: "Barbell Row",
+                    targetWeight: 50,
+                    targetReps: 10,
+                    restDurationSeconds: 60
+                )
+            ]
+        )
+        let engine = WorkoutEngine()
+        let completedAt = Date(timeIntervalSince1970: 1_000)
+        var session = try engine.startSession(routine: routine)
+
+        try engine.completeCurrentSet(session: &session, now: completedAt)
+
+        XCTAssertEqual(session.sessionStatus, .resting)
+        XCTAssertEqual(session.nextPlannedSet?.exerciseName, "Barbell Row")
+        XCTAssertEqual(session.lockScreenState.restRemainingSeconds, 135)
+        XCTAssertEqual(
+            session.lockScreenState.resumeAt,
+            completedAt.addingTimeInterval(135)
+        )
+    }
+
     func testFileStoreRoundTripsAndUpsertsBySessionId() throws {
         let routine = try XCTUnwrap(RoutineCatalog.defaultRoutines.first)
         let engine = WorkoutEngine()

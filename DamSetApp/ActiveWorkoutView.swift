@@ -115,37 +115,20 @@ struct ActiveWorkoutView: View {
     }
 
     private func workoutContent(_ session: WorkoutRoutineSession) -> some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                workoutHeader(session)
-                restAlertStatusBanner
-
-                if !dynamicTypeSize.isAccessibilitySize {
-                    workoutFlowCard(session)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                ScrollView {
+                    workoutStack(session, compact: false)
                 }
+            } else {
+                ViewThatFits(in: .vertical) {
+                    workoutStack(session, compact: true)
 
-                switch session.lockScreenState.phase {
-                case .performingSet:
-                    targetCard(session)
-                    progressControl(session)
-                    if session.lockScreenState.exerciseKind == .weighted {
-                        weightCard(session)
+                    ScrollView {
+                        workoutStack(session, compact: false)
                     }
-                case .resting, .readyForNextSet:
-                    restCard(session.lockScreenState)
-                    restCorrectionPanel(session)
-                case .completed:
-                    completionCard
-                }
-
-                if dynamicTypeSize.isAccessibilitySize,
-                   session.lockScreenState.phase != .completed {
-                    workoutFlowCard(session)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         }
         .safeAreaInset(edge: .bottom) {
             if session.lockScreenState.phase != .completed {
@@ -166,6 +149,44 @@ struct ActiveWorkoutView: View {
                     }
             }
         }
+    }
+
+    @ViewBuilder
+    private func workoutStack(_ session: WorkoutRoutineSession, compact: Bool) -> some View {
+        VStack(spacing: compact ? 10 : 14) {
+            workoutHeader(session, compact: compact)
+            restAlertStatusBanner
+
+            if session.lockScreenState.phase != .completed {
+                workoutJourney(session)
+            }
+
+            switch session.lockScreenState.phase {
+            case .performingSet:
+                if compact {
+                    compactPerformingCard(session)
+                } else {
+                    targetCard(session)
+                    progressControl(session)
+                    if session.lockScreenState.exerciseKind == .weighted {
+                        weightCard(session)
+                    }
+                }
+            case .resting, .readyForNextSet:
+                restCard(session, compact: compact)
+                restCorrectionPanel(session)
+            case .completed:
+                completionCard
+            }
+
+            if dynamicTypeSize.isAccessibilitySize,
+               session.lockScreenState.phase != .completed {
+                workoutFlowCard(session)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, compact ? 8 : 12)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
 
     @ViewBuilder
@@ -240,8 +261,8 @@ struct ActiveWorkoutView: View {
         #endif
     }
 
-    private func workoutHeader(_ session: WorkoutRoutineSession) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func workoutHeader(_ session: WorkoutRoutineSession, compact: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: compact ? 7 : 12) {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 12) {
                     workoutIdentity(session)
@@ -259,23 +280,36 @@ struct ActiveWorkoutView: View {
 
             SteelBarDivider(accent: DamSetDesign.accent)
 
-            ProgressView(value: progress(for: session))
-                .tint(DamSetDesign.accent)
-                .accessibilityLabel("Workout progress")
+            HStack(spacing: 10) {
+                ProgressView(value: progress(for: session))
+                    .tint(DamSetDesign.accent)
+                    .accessibilityLabel("Workout progress")
+                Text("\(session.completedSets.count) done · \(setsRemaining(in: session)) left")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .fixedSize()
+            }
         }
         .padding(.horizontal, 4)
-        .padding(.vertical, 8)
+        .padding(.vertical, compact ? 3 : 8)
     }
 
     private func workoutIdentity(_ session: WorkoutRoutineSession) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(session.routineName)
+        let isResting = session.lockScreenState.phase == .resting
+            || session.lockScreenState.phase == .readyForNextSet
+        let displayedExercise = isResting
+            ? session.nextPlannedSet?.exerciseName ?? "Workout complete"
+            : session.lockScreenState.exerciseName
+
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(isResting ? "\(session.routineName) · Up next" : session.routineName)
                 .font(.caption.weight(.semibold))
                 .fontWidth(.condensed)
                 .textCase(.uppercase)
                 .tracking(1.5)
                 .foregroundStyle(DamSetDesign.steel.opacity(0.76))
-            Text(session.lockScreenState.exerciseName)
+            Text(displayedExercise)
                 .font(.system(size: min(exerciseTitleSize, 44), weight: .black, design: .default))
                 .fontWidth(.condensed)
                 .foregroundStyle(.primary)
@@ -284,7 +318,15 @@ struct ActiveWorkoutView: View {
     }
 
     private func setBadge(_ session: WorkoutRoutineSession) -> some View {
-        Text("Set \(session.lockScreenState.currentSetIndex)/\(session.lockScreenState.totalPlannedSets)")
+        let displayedIndex = min(
+            session.lockScreenState.phase == .resting
+                || session.lockScreenState.phase == .readyForNextSet
+                ? session.currentSetIndex + 1
+                : session.currentSetIndex,
+            session.lockScreenState.totalPlannedSets
+        )
+
+        return Text("Set \(displayedIndex)/\(session.lockScreenState.totalPlannedSets)")
             .font(.subheadline.weight(.semibold))
             .monospacedDigit()
             .padding(.horizontal, 12)
@@ -298,6 +340,73 @@ struct ActiveWorkoutView: View {
                     }
             }
             .foregroundStyle(DamSetDesign.accent)
+    }
+
+    private func workoutJourney(_ session: WorkoutRoutineSession) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(Array(session.plannedSets.enumerated()), id: \.element.setId) { index, planned in
+                        JourneySetPill(
+                            setNumber: index + 1,
+                            exerciseName: planned.exerciseName,
+                            detail: journeyDetail(planned),
+                            state: journeyState(at: index, in: session)
+                        )
+                        .id(index)
+                    }
+                }
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
+            }
+            .scrollIndicators(.hidden)
+            .onAppear {
+                proxy.scrollTo(journeyFocusIndex(in: session), anchor: .center)
+            }
+            .onChange(of: journeyFocusIndex(in: session)) { _, newIndex in
+                withAnimation(.snappy) {
+                    proxy.scrollTo(newIndex, anchor: .center)
+                }
+            }
+        }
+        .accessibilityLabel(
+            "Workout journey. \(session.completedSets.count) sets complete, \(setsRemaining(in: session)) remaining."
+        )
+    }
+
+    private func compactPerformingCard(_ session: WorkoutRoutineSession) -> some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    GymSectionLabel(
+                        text: session.lockScreenState.trackingMode == .duration ? "Target time" : "Target reps",
+                        color: DamSetDesign.steel
+                    )
+                    Text(targetValue(for: session.lockScreenState))
+                        .font(.system(size: 42, weight: .black))
+                        .fontWidth(.condensed)
+                        .monospacedDigit()
+                }
+                Spacer(minLength: 8)
+                if let planned = session.currentPlannedSet {
+                    Text(targetDescription(planned))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                        .monospacedDigit()
+                }
+            }
+
+            Divider().overlay(DamSetDesign.steelMuted.opacity(0.7))
+            progressEditor(session)
+
+            if session.lockScreenState.exerciseKind == .weighted {
+                Divider().overlay(DamSetDesign.steelMuted.opacity(0.7))
+                weightEditor(session)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .gymPanel(accent: DamSetDesign.accent.opacity(0.78), cut: 16, padding: 14)
     }
 
     private func workoutFlowCard(_ session: WorkoutRoutineSession) -> some View {
@@ -490,41 +599,32 @@ struct ActiveWorkoutView: View {
     }
 
     private func restCorrectionPanel(_ session: WorkoutRoutineSession) -> some View {
-        VStack(spacing: 16) {
-            if dynamicTypeSize.isAccessibilitySize {
-                DisclosureGroup(isExpanded: $showRestCorrection) {
-                    VStack(spacing: 18) {
-                        progressEditor(session)
-                        if session.lockScreenState.exerciseKind == .weighted {
-                            Divider()
-                                .overlay(DamSetDesign.steelMuted.opacity(0.7))
-                            weightEditor(session)
-                        }
-                    }
-                    .padding(.top, 16)
-                } label: {
-                    Label("Correct last set", systemImage: "slider.horizontal.3")
-                        .font(.headline)
-                        .foregroundStyle(DamSetDesign.accent)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        DisclosureGroup(isExpanded: $showRestCorrection) {
+            VStack(spacing: 16) {
+                progressEditor(session)
+                if session.lockScreenState.exerciseKind == .weighted {
+                    Divider()
+                        .overlay(DamSetDesign.steelMuted.opacity(0.7))
+                    weightEditor(session)
                 }
-            } else {
-                VStack(spacing: 16) {
-                    GymSectionLabel(text: "Correct last set")
-                    progressEditor(session)
-                    if session.lockScreenState.exerciseKind == .weighted {
-                        Divider()
-                            .overlay(DamSetDesign.steelMuted.opacity(0.7))
-                        weightEditor(session)
-                    }
-                }
+                Divider()
+                    .overlay(DamSetDesign.steelMuted.opacity(0.7))
+                undoSetButton
             }
-
-            Divider()
-                .overlay(DamSetDesign.steelMuted.opacity(0.7))
-            undoSetButton
+            .padding(.top, 14)
+        } label: {
+            HStack {
+                Label("Correct last set", systemImage: "slider.horizontal.3")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DamSetDesign.accent)
+                Spacer()
+                Text("Optional")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
         }
-        .gymPanel(accent: DamSetDesign.accent.opacity(0.76), cut: 16)
+        .gymPanel(accent: DamSetDesign.accent.opacity(0.48), cut: 14, padding: 12)
     }
 
     private func weightCard(_ session: WorkoutRoutineSession) -> some View {
@@ -728,22 +828,51 @@ struct ActiveWorkoutView: View {
         }
     }
 
-    private func restCard(_ state: LockScreenState) -> some View {
+    private func restCard(_ session: WorkoutRoutineSession, compact: Bool) -> some View {
+        let state = session.lockScreenState
         let stateColor = state.phase == .readyForNextSet ? DamSetDesign.moss : DamSetDesign.accent
 
-        return VStack(spacing: 14) {
+        return VStack(spacing: compact ? 10 : 14) {
             SteelBarDivider(accent: stateColor)
 
-            GymSectionLabel(
-                text: state.phase == .readyForNextSet ? "Rest complete" : "Rest",
-                color: stateColor
-            )
-            Text(state.restRemainingSeconds.minuteSecondText)
-                .font(.system(size: min(restTimerSize, 80), weight: .black, design: .default))
-                .fontWidth(.condensed)
-                .foregroundStyle(stateColor)
-                .monospacedDigit()
-                .contentTransition(.numericText())
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    GymSectionLabel(
+                        text: state.phase == .readyForNextSet ? "Rest complete" : "Rest",
+                        color: stateColor
+                    )
+                    Text(state.restRemainingSeconds.minuteSecondText)
+                        .font(.system(
+                            size: compact ? 54 : min(restTimerSize, 80),
+                            weight: .black,
+                            design: .default
+                        ))
+                        .fontWidth(.condensed)
+                        .foregroundStyle(stateColor)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                }
+
+                Spacer(minLength: 4)
+
+                if let next = session.nextPlannedSet {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("UP NEXT")
+                            .font(.caption2.weight(.bold))
+                            .tracking(1)
+                            .foregroundStyle(.secondary)
+                        Text(next.exerciseName)
+                            .font(.headline.weight(.bold))
+                            .fontWidth(.condensed)
+                            .multilineTextAlignment(.trailing)
+                            .lineLimit(2)
+                        Text(journeyDetail(next))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+            }
 
             HStack(spacing: 12) {
                 restAdjustmentButton(seconds: -30, disabled: state.restRemainingSeconds == 0)
@@ -763,7 +892,7 @@ struct ActiveWorkoutView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .gymPanel(accent: stateColor.opacity(0.80), cut: 18, padding: 18)
+        .gymPanel(accent: stateColor.opacity(0.80), cut: 18, padding: compact ? 14 : 18)
     }
 
     private var completionCard: some View {
@@ -802,6 +931,41 @@ struct ActiveWorkoutView: View {
         let total = max(session.lockScreenState.totalPlannedSets, 1)
         let completed = min(session.completedSets.count, total)
         return Double(completed) / Double(total)
+    }
+
+    private func setsRemaining(in session: WorkoutRoutineSession) -> Int {
+        max(0, session.plannedSets.count - session.completedSets.count)
+    }
+
+    private func journeyFocusIndex(in session: WorkoutRoutineSession) -> Int {
+        let zeroBasedCurrent = max(0, session.currentSetIndex - 1)
+        let isResting = session.lockScreenState.phase == .resting
+            || session.lockScreenState.phase == .readyForNextSet
+        return min(
+            isResting ? zeroBasedCurrent + 1 : zeroBasedCurrent,
+            max(0, session.plannedSets.count - 1)
+        )
+    }
+
+    private func journeyState(
+        at index: Int,
+        in session: WorkoutRoutineSession
+    ) -> JourneySetState {
+        if index < session.completedSets.count {
+            return .completed
+        }
+        if index == journeyFocusIndex(in: session) {
+            return .current
+        }
+        return .upcoming
+    }
+
+    private func journeyDetail(_ planned: PlannedSet) -> String {
+        let goal = planned.trackingMode == .duration
+            ? planned.targetDurationSeconds.minuteSecondText
+            : "\(planned.targetReps) reps"
+        guard planned.exerciseKind == .weighted else { return goal }
+        return "\(planned.targetWeight.formatted()) kg · \(goal)"
     }
 
     private func phaseValue(for state: LockScreenState) -> String {
@@ -1035,6 +1199,86 @@ private func parsedDurationSeconds(_ rawValue: String) -> Int? {
     }
     guard let seconds else { return nil }
     return min(86_400, max(0, seconds))
+}
+
+private enum JourneySetState {
+    case completed
+    case current
+    case upcoming
+}
+
+private struct JourneySetPill: View {
+    let setNumber: Int
+    let exerciseName: String
+    let detail: String
+    let state: JourneySetState
+
+    private var accent: Color {
+        switch state {
+        case .completed:
+            return DamSetDesign.moss
+        case .current:
+            return DamSetDesign.accent
+        case .upcoming:
+            return DamSetDesign.steelMuted
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if state == .completed {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(accent)
+            } else {
+                Text("\(setNumber)")
+                    .font(.caption2.weight(.black))
+                    .monospacedDigit()
+                    .foregroundStyle(state == .current ? .white : accent)
+                    .frame(width: 21, height: 21)
+                    .background(state == .current ? accent : .clear, in: Circle())
+                    .overlay {
+                        Circle().stroke(accent, lineWidth: 1)
+                    }
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(exerciseName)
+                    .font(.caption.weight(.bold))
+                    .fontWidth(.condensed)
+                    .foregroundStyle(state == .upcoming ? .secondary : .primary)
+                    .lineLimit(1)
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 8)
+        .frame(minWidth: 126, alignment: .leading)
+        .background(
+            state == .current ? accent.opacity(0.14) : DamSetDesign.surface.opacity(0.72),
+            in: RoundedRectangle(cornerRadius: 12)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(accent.opacity(state == .upcoming ? 0.35 : 0.85), lineWidth: state == .current ? 1.5 : 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "Set \(setNumber), \(exerciseName), \(detail), \(accessibilityState)"
+        )
+    }
+
+    private var accessibilityState: String {
+        switch state {
+        case .completed: "completed"
+        case .current: "current"
+        case .upcoming: "upcoming"
+        }
+    }
 }
 
 private struct FlowMetricData {

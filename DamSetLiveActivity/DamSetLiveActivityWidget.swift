@@ -128,14 +128,18 @@ struct DamSetLiveActivityWidget: Widget {
         return Date.now >= resumeAt
     }
 
+    private func showsUpcomingExercise(_ context: ActivityViewContext<DamSetActivityAttributes>) -> Bool {
+        isResting(context.state) && context.state.nextExerciseName != nil
+    }
+
     private func displayedExerciseName(for context: ActivityViewContext<DamSetActivityAttributes>) -> String {
-        showsAutomaticNextSet(context)
+        showsUpcomingExercise(context)
             ? context.state.nextExerciseName ?? context.state.exerciseName
             : context.state.exerciseName
     }
 
     private func displayedSetIndex(for context: ActivityViewContext<DamSetActivityAttributes>) -> Int {
-        guard showsAutomaticNextSet(context) else { return context.state.currentSetIndex }
+        guard showsUpcomingExercise(context) else { return context.state.currentSetIndex }
         return min(context.state.currentSetIndex + 1, context.state.totalPlannedSets)
     }
 
@@ -455,6 +459,17 @@ struct DamSetLiveActivityWidget: Widget {
     }
 
     private func loadSummary(for context: ActivityViewContext<DamSetActivityAttributes>) -> String {
+        if showsUpcomingExercise(context) {
+            let isDuration = context.state.nextTrackingMode == ExerciseTrackingMode.duration.rawValue
+            let target = isDuration
+                ? durationText(context.state.nextTargetDurationSeconds ?? 0)
+                : "\(context.state.nextTargetReps ?? 0) reps"
+            if context.state.nextExerciseKind == ExerciseKind.bodyweight.rawValue {
+                return "Up next · Bodyweight · target \(target)"
+            }
+            return "Up next · \((context.state.nextTargetWeight ?? 0).formatted()) kg · target \(target)"
+        }
+
         let target = isDurationTracked(context)
             ? durationText(displayedTargetDuration(for: context))
             : "\(displayedTargetReps(for: context)) reps"
