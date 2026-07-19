@@ -125,7 +125,7 @@ struct DamSetLiveActivityWidget: Widget {
 
     private func restHasExpired(_ context: ActivityViewContext<DamSetActivityAttributes>) -> Bool {
         guard let resumeAt = context.state.resumeAt else { return context.isStale }
-        return Date.now >= resumeAt
+        return context.isStale || Date.now >= resumeAt
     }
 
     private func showsUpcomingExercise(_ context: ActivityViewContext<DamSetActivityAttributes>) -> Bool {
@@ -203,15 +203,21 @@ struct DamSetLiveActivityWidget: Widget {
         return "\(displayedTargetReps(for: context))"
     }
 
-    /// Lock Screen Live Activities are capped at roughly 160pt high. Keep this
-    /// deliberately to two information rows and one control row so iOS never
-    /// clips the actions behind the flashlight/camera controls.
+    /// Lock Screen Live Activities are capped at roughly 160pt high. Weighted
+    /// work trades the separate status row for its second control row so iOS
+    /// does not clip actions behind the flashlight/camera controls.
     private func lockScreenView(context: ActivityViewContext<DamSetActivityAttributes>) -> some View {
         // `Text(timerInterval:)` keeps the number moving, but it does not
         // re-evaluate surrounding conditional views at zero. Request an exact
         // timeline refresh at the deadline so the card switches from Rest to
         // the next set at the same moment as the final countdown cue.
-        TimelineView(.explicit(context.state.resumeAt.map { [$0] } ?? [])) { _ in
+        // Keep a one-second fallback entry because the system may coalesce the
+        // exact-deadline render a fraction early. `isStale` is also accepted
+        // as deadline evidence so the card never gets stranded on Skip.
+        let refreshDates = context.state.resumeAt.map {
+            [$0, $0.addingTimeInterval(1)]
+        } ?? []
+        return TimelineView(.explicit(refreshDates)) { _ in
             lockScreenContent(context: context)
         }
     }
@@ -225,13 +231,15 @@ struct DamSetLiveActivityWidget: Widget {
                     .font(.headline)
                     .foregroundStyle(TrainingPalette.completed)
                     .frame(maxWidth: .infinity, minHeight: 42)
+            } else if displayedExerciseKind(for: context) == ExerciseKind.weighted.rawValue {
+                // Weighted sets use a second compact 44pt control row for
+                // actual load. Omitting the separate status line keeps the
+                // entire Live Activity inside the Lock Screen height budget;
+                // the rest countdown moves into the Skip action instead.
+                controlsRow(context: context)
             } else {
                 statusLine(context: context)
                 controlsRow(context: context)
-                    // WidgetKit renders this as pending while the App Intent
-                    // saves and refreshes the Activity, instead of looking as
-                    // if a tap was ignored.
-                    .invalidatableContent()
             }
         }
         .padding(.horizontal, 16)
@@ -307,40 +315,75 @@ struct DamSetLiveActivityWidget: Widget {
         .frame(minHeight: 18)
     }
 
-    /// − / reps / + / actual kg / Done or Next — every target ≥44pt so a
-    /// sweaty thumb can hit it without unlocking. During rest, −/+ corrects
-    /// the just-finished rep count and Next explicitly skips/finishes the
-    /// rest. The compact actual-weight tile only appears for weighted work;
-    /// bodyweight exercises keep the former, roomier layout.
+    /// The first row adjusts reps/time and completes the set. Weighted work
+    /// gets a second row for −2.5 kg / actual kg / +2.5 kg so every button
+    /// remains at least 44pt instead of crowding seven controls into one row.
+    /// During an active rest, corrections apply to the set that just finished.
     private func controlsRow(context: ActivityViewContext<DamSetActivityAttributes>) -> some View {
-        HStack(spacing: 9) {
-            progressAdjustmentControls(context: context)
-
+        VStack(spacing: 6) {
+            HStack(spacing: 9) {
+                progressAdjustmentControls(context: context)
+                primaryAction(context: context)
+            }
             if displayedExerciseKind(for: context) == ExerciseKind.weighted.rawValue {
-                actualWeightMetric(context: context)
-            }
+                HStack(spacing: 9) {
+                    Button(intent: AdjustWeightIntent(
+                        sessionId: context.attributes.sessionId,
+                        delta: -2.5
+                    )) {
+                        progressControlIcon("minus")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Decrease weight by 2.5 kilograms")
 
-            if context.state.phase == LockScreenPhase.performingSet.rawValue || showsAutomaticNextSet(context) {
-                Button(intent: CompleteSetIntent(sessionId: context.attributes.sessionId)) {
-                    Label("Done", systemImage: "checkmark")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(minWidth: 82, maxWidth: .infinity, minHeight: 44)
-                        .background(TrainingPalette.accent, in: Capsule())
+                    actualWeightMetric(context: context)
+
+                    Button(intent: AdjustWeightIntent(
+                        sessionId: context.attributes.sessionId,
+                        delta: 2.5
+                    )) {
+                        progressControlIcon("plus")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Increase weight by 2.5 kilograms")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Complete set")
-            } else {
-                Button(intent: AdvanceToNextSetIntent(sessionId: context.attributes.sessionId)) {
-                    Label(restIsReady(context) ? "Next" : "Skip", systemImage: "forward.fill")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(minWidth: 82, maxWidth: .infinity, minHeight: 44)
-                        .background(TrainingPalette.accent, in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(restIsReady(context) ? "Start next set" : "Skip rest and start next set")
             }
+        }
+    }
+
+    @ViewBuilder
+    private func primaryAction(context: ActivityViewContext<DamSetActivityAttributes>) -> some View {
+        if context.state.phase == LockScreenPhase.performingSet.rawValue || showsAutomaticNextSet(context) {
+            Button(intent: CompleteSetIntent(sessionId: context.attributes.sessionId)) {
+                Label("Done", systemImage: "checkmark")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(minWidth: 82, maxWidth: .infinity, minHeight: 44)
+                    .background(TrainingPalette.accent, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Complete set")
+        } else {
+            Button(intent: AdvanceToNextSetIntent(sessionId: context.attributes.sessionId)) {
+                HStack(spacing: 6) {
+                    Image(systemName: "forward.fill")
+                    if restIsReady(context) {
+                        Text("Next")
+                    } else if displayedExerciseKind(for: context) == ExerciseKind.weighted.rawValue,
+                              let resumeAt = context.state.resumeAt {
+                        Text(timerInterval: Date.now...max(Date.now, resumeAt), countsDown: true)
+                            .monospacedDigit()
+                    } else {
+                        Text("Skip")
+                    }
+                }
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(minWidth: 82, maxWidth: .infinity, minHeight: 44)
+                .background(TrainingPalette.accent, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(restIsReady(context) ? "Start next set" : "Skip rest and start next set")
         }
     }
 
@@ -388,17 +431,22 @@ struct DamSetLiveActivityWidget: Widget {
     /// Label the editable number so a just-finished set on the Rest screen is
     /// still unambiguously the actual rep count, rather than the set target.
     private func actualRepsMetric(context: ActivityViewContext<DamSetActivityAttributes>) -> some View {
-        VStack(spacing: 1) {
+        let actualReps = displayedActualReps(for: context)
+        return VStack(spacing: 1) {
             Text(showsAutomaticNextSet(context) ? "TARGET REPS" : "ACTUAL REPS")
                 .font(.system(size: 8, weight: .bold, design: .rounded))
                 .tracking(0.35)
                 .foregroundStyle(TrainingPalette.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
-            Text("\(displayedActualReps(for: context))")
+            Text("\(actualReps)")
                 .font(.system(size: 25, weight: .bold, design: .rounded))
                 .monospacedDigit()
-                .contentTransition(.numericText())
+                // Supplying the value lets SwiftUI infer whether this tap was
+                // + or −, giving each digit the expected slot-style motion
+                // instead of fading/replacing the entire card.
+                .contentTransition(.numericText(value: Double(actualReps)))
+                .animation(.snappy(duration: 0.22), value: actualReps)
                 .foregroundStyle(TrainingPalette.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
@@ -431,11 +479,9 @@ struct DamSetLiveActivityWidget: Widget {
         .accessibilityValue("\(displayedActualDuration(for: context)) seconds")
     }
 
-    /// A compact read-only tile keeps the weighted-set's real load visible
-    /// beside the editable rep value without spending a fourth row of the
-    /// 160pt Lock Screen budget. At the instant the resting card becomes the
-    /// next-set card, this intentionally changes to Target so it never claims
-    /// an unperformed set already has an actual weight.
+    /// At the instant the resting card becomes the next-set card, this changes
+    /// to Target so it never claims an unperformed set already has an actual
+    /// weight. The surrounding −/+ buttons make it actual on the first edit.
     private func actualWeightMetric(context: ActivityViewContext<DamSetActivityAttributes>) -> some View {
         VStack(spacing: 1) {
             Text(showsAutomaticNextSet(context) ? "TARGET KG" : "ACTUAL KG")
@@ -451,7 +497,7 @@ struct DamSetLiveActivityWidget: Widget {
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
-        .frame(width: 56, height: 44)
+        .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
         .background(TrainingPalette.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(showsAutomaticNextSet(context) ? "Target weight" : "Actual weight")

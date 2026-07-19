@@ -6,7 +6,10 @@ public final class ActiveSessionStore: @unchecked Sendable {
     private let box: JSONFileBox<WorkoutRoutineSession>
 
     public init(fileURL: URL) {
-        self.box = JSONFileBox(fileURL: fileURL)
+        // Lock Screen Live Activity buttons intentionally work before Face ID
+        // or passcode unlock, so the in-flight session and its sidecar lock
+        // must use an iOS file-protection class available while locked.
+        self.box = JSONFileBox(fileURL: fileURL, accessibleWhileLocked: true)
     }
 
     /// Uses the shared App Group container when the entitlement is present,

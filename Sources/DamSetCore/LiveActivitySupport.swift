@@ -217,7 +217,7 @@ public enum WorkoutSessionSync {
         try await WorkoutSessionMutationGate.shared.apply(session)
     }
 
-    /// Persists an in-place reps or duration correction and refreshes the Live
+    /// Persists an in-place reps, duration, or weight correction and refreshes the Live
     /// Activity without touching the rest-end notification. Progress changes
     /// never alter a rest deadline, so avoiding notification IPC keeps Lock
     /// Screen +/- taps responsive while preserving the countdown cue.
@@ -341,7 +341,7 @@ private actor WorkoutSessionMutationGate {
         await WorkoutSessionSync.updateLiveActivity(for: session)
     }
 
-    /// Corrections change only the recorded reps or time. Keep the existing
+    /// Corrections change only the recorded reps, time, or weight. Keep the existing
     /// rest cue intact and avoid its notification-center round trip on every
     /// +/- tap.
     func applyProgressCorrection(_ session: WorkoutRoutineSession) async throws {

@@ -21,12 +21,15 @@ private struct JSONFileLockError: Error, CustomStringConvertible {
 final class JSONFileBox<Value: Codable>: @unchecked Sendable {
     private let fileURL: URL
     private let lockFileURL: URL
+    private let accessibleWhileLocked: Bool
     private let lock = NSLock()
 
-    init(fileURL: URL) {
+    init(fileURL: URL, accessibleWhileLocked: Bool = false) {
         let standardizedURL = fileURL.standardizedFileURL
         self.fileURL = standardizedURL
         self.lockFileURL = standardizedURL.appendingPathExtension("lock")
+        self.accessibleWhileLocked = accessibleWhileLocked
+        makeExistingFilesAccessibleWhileLocked()
     }
 
     func load() throws -> Value? {
@@ -75,6 +78,7 @@ final class JSONFileBox<Value: Codable>: @unchecked Sendable {
         guard descriptor >= 0 else {
             throw JSONFileLockError(operation: "open", path: lockFileURL.path, code: errno)
         }
+        makeAccessibleWhileLocked(lockFileURL)
         defer {
             _ = flock(descriptor, LOCK_UN)
             _ = close(descriptor)
@@ -134,6 +138,33 @@ final class JSONFileBox<Value: Codable>: @unchecked Sendable {
             try container.encode(date.timeIntervalSince1970)
         }
         let data = try encoder.encode(value)
+        #if os(iOS)
+        let options: Data.WritingOptions = accessibleWhileLocked
+            ? [.atomic, .noFileProtection]
+            : .atomic
+        try data.write(to: fileURL, options: options)
+        #else
         try data.write(to: fileURL, options: .atomic)
+        #endif
+    }
+
+    /// Live Activity intents must be able to read the active session while
+    /// Face ID/passcode is still locked. Only callers that explicitly opt in
+    /// receive this protection class; history and routine files retain the
+    /// platform default.
+    private func makeExistingFilesAccessibleWhileLocked() {
+        makeAccessibleWhileLocked(fileURL)
+        makeAccessibleWhileLocked(lockFileURL)
+    }
+
+    private func makeAccessibleWhileLocked(_ url: URL) {
+        #if os(iOS)
+        guard accessibleWhileLocked,
+              FileManager.default.fileExists(atPath: url.path) else { return }
+        try? FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.none],
+            ofItemAtPath: url.path
+        )
+        #endif
     }
 }

@@ -10,12 +10,13 @@ import DamSetCore
 /// Every action is scoped to the Live Activity's session ID. This keeps an old
 /// activity from mutating a newer workout if iOS has not dismissed it yet.
 ///
-/// Refreshing only updates the wall-clock rest phase; it intentionally does
-/// not advance the set. That makes +/- during both an active and an expired
-/// rest correct the set that was just completed.
+/// Refreshing first realizes an expired rest transition, so an action always
+/// mutates the same set the Lock Screen is currently presenting. During an
+/// active rest, +/- still corrects the set that just finished.
 private enum LockScreenAction: Sendable {
     case adjustReps(Int)
     case adjustDuration(Int)
+    case adjustWeight(Double)
     case completeSet
     case advanceToNextSet
 }
@@ -51,6 +52,14 @@ private actor LockScreenActionCoordinator {
                 try await WorkoutSessionSync.applyProgressCorrection(session)
             }
             return
+        case .adjustWeight(let delta):
+            try engine.adjustActualWeight(session: &session, delta: delta)
+            if restPhaseChanged {
+                try await WorkoutSessionSync.applyDidChange(session)
+            } else {
+                try await WorkoutSessionSync.applyProgressCorrection(session)
+            }
+            return
         case .completeSet:
             guard session.lockScreenState.phase == .performingSet else {
                 try await WorkoutSessionSync.applyDidChange(session)
@@ -72,6 +81,10 @@ private actor LockScreenActionCoordinator {
 struct AdjustRepsIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Adjust Reps"
     static let isDiscoverable = false
+    static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+    // Repetition taps never need a foreground scene. Keeping them in the
+    // background avoids an unnecessary process/UI handoff on the Lock Screen.
+    static let supportedModes: IntentModes = .background
 
     @Parameter(title: "Session ID") var sessionId: String
     @Parameter(title: "Delta") var delta: Int
@@ -98,6 +111,8 @@ struct AdjustRepsIntent: LiveActivityIntent {
 struct AdjustDurationIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Adjust Time"
     static let isDiscoverable = false
+    static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+    static let supportedModes: IntentModes = .background
 
     @Parameter(title: "Session ID") var sessionId: String
     @Parameter(title: "Seconds") var deltaSeconds: Int
@@ -121,9 +136,38 @@ struct AdjustDurationIntent: LiveActivityIntent {
     }
 }
 
+struct AdjustWeightIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Adjust Weight"
+    static let isDiscoverable = false
+    static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+    static let supportedModes: IntentModes = .background
+
+    @Parameter(title: "Session ID") var sessionId: String
+    @Parameter(title: "Kilograms") var delta: Double
+
+    init() {
+        self.sessionId = ""
+        self.delta = 0
+    }
+
+    init(sessionId: String, delta: Double) {
+        self.sessionId = sessionId
+        self.delta = delta
+    }
+
+    func perform() async throws -> some IntentResult {
+        try await LockScreenActionCoordinator.shared.perform(
+            sessionId: sessionId,
+            action: .adjustWeight(delta)
+        )
+        return .result()
+    }
+}
+
 struct CompleteSetIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Complete Set"
     static let isDiscoverable = false
+    static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 
     @Parameter(title: "Session ID") var sessionId: String
 
@@ -136,11 +180,13 @@ struct CompleteSetIntent: LiveActivityIntent {
     }
 }
 
-/// Starts the next set explicitly. During an active countdown this is the
-/// user's "skip rest" action; after expiry it is the "next set" action.
+/// Starts the next set explicitly during an active countdown. Normally the
+/// deadline transition is automatic; the ready-state path remains as a
+/// malformed/legacy-session fallback.
 struct AdvanceToNextSetIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Start Next Set"
     static let isDiscoverable = false
+    static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 
     @Parameter(title: "Session ID") var sessionId: String
 
