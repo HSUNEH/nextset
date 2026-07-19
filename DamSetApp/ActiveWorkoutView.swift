@@ -130,6 +130,10 @@ struct ActiveWorkoutView: View {
                 }
             }
         }
+        // `ViewThatFits` keeps a short child at its ideal height. Without an
+        // outer alignment frame SwiftUI centers that child vertically, which
+        // leaves a large, distracting gap below the workout controls.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .safeAreaInset(edge: .bottom) {
             if session.lockScreenState.phase != .completed {
                 primaryWorkoutAction(session)
