@@ -1,7 +1,7 @@
 ---
 type: log
 status: active
-updated: "2026-07-19"
+updated: "2026-07-24"
 tags: [agent-wiki, work-log]
 ---
 
@@ -74,3 +74,27 @@ tags: [agent-wiki, work-log]
 - Decisions: 잠긴 상태의 다음 세트 전환은 서버나 앱 깨우기에 기대지 않고 ActivityKit 예약 시작을 우선하며, 예약 불가 시 기존 로컬 알림 경로를 유지한다.
 - Verification: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift test` 73개 통과, `xcrun swift run DamSetCoreSmoke` 통과, generic iOS `xcodebuild ... build` 성공, 연결 iPhone에 `devicectl device install app` 및 `process launch` 성공.
 - Wiki: `wiki/product.md`, `wiki/architecture.md`, `wiki/playbooks/device-live-activity.md`, `wiki/log.md`
+
+## [2026-07-24] feature | 예상 운동 시간과 완료 소요시간 표시
+
+- Scope: 운동 선택 화면에 선택 토글과 연동되는 예상 소요시간을 추가하고, 완료 카드와 기록 상세에 시작–종료 시각과 총 소요시간을 추가했다.
+- Actions: `WorkoutDurationEstimate`를 DamSetCore에 두어 세트당 30초(시간 기반 세트는 목표 시간) + 마지막 세트를 제외한 휴식 합으로 계산했다. `WorkoutSummary.elapsedSeconds`와 앱 쪽 `compactDurationText`/`workoutTimeRangeText` 포맷터를 추가했다. 새 코어 파일 때문에 `xcodegen generate`로 프로젝트를 재생성했다.
+- Decisions: 예상치에서 마지막 세트의 휴식은 엔진이 실제로 건너뛰므로 합산하지 않는다. 손으로 수정한 기록이 종료 < 시작이 되어도 경과시간은 0으로 클램프한다. `.build` 캐시가 다른 경로(nextset)에서 생성된 채 남아 있으면 `swift test`가 SwiftShims 오류로 죽으므로 캐시를 지우고 재실행한다.
+- Verification: `swift test` 81개 통과(신규 8개 포함), `swift run DamSetCoreSmoke` 통과, `ruby Scripts/check_agent_wiki.rb` 통과, `git diff --check` 통과, generic iOS Simulator `xcodebuild ... build` 성공. generic iOS 개발 서명 빌드 뒤 연결된 iPhone 11에 `devicectl device install app`·`process launch` 성공. 새 화면 요소의 육안 관찰은 사용자 확인에 맡김.
+- Wiki: `wiki/product.md`, `wiki/log.md`
+
+## [2026-07-24] fix | 휴식 ±30초 조정의 잠금 화면 반영
+
+- Scope: 앱에서 휴식시간을 ±30초 조정해도 잠금 화면 카운트다운과 다음 세트 예약 시각이 옛 마감에 머무르던 문제를 고쳤다.
+- Actions: `ContentState`에 `scheduledStart`를 추가해 pending 예약 카드가 자기 마감을 기억하게 했다. `scheduleNextSetActivityIfPossible`을 async 결과 enum(kept/scheduled/rescheduled/unavailable)으로 바꿔 마감이 어긋난 pending을 `end(nil, .immediate)`로 취소하고 재예약하며, 재예약 시 이미 종료된 휴식 카드를 dismiss하고 새 카드를 요청해 `.after(새 resumeAt)`으로 교체했다.
+- Decisions: 이미 `end()`된 Live Activity는 내용·dismissal을 갱신할 수 없으므로, 휴식 마감 변경은 카드 교체로 처리한다. 마감 비교는 1초 허용 오차의 `scheduledStart` 스탬프로 하고, 스탬프 없는(구버전) pending은 항상 stale로 보고 교체한다. 즉시 Activity 요청은 조정이 앱 포그라운드에서만 발생한다는 전제에 기댄다.
+- Verification: `swift test` 81개 통과, `swift run DamSetCoreSmoke` 통과, `ruby Scripts/check_agent_wiki.rb` 통과, `git diff --check` 통과, generic iOS `xcodebuild ... build` 성공, iPhone 11에 `devicectl device install app`·`process launch` 성공. 잠금 화면에서 ±30 조정 후 카운트다운·전환 시각·알림음의 육안/청각 확인은 사용자 QA로 남김.
+- Wiki: `wiki/architecture.md`, `wiki/log.md`
+
+## [2026-07-24] fix | 휴식을 벗어나도 살아남는 pending 예약 카드 취소
+
+- Scope: 잠금 화면 휴식 종료 알림음이 시간차를 두고 두 번 울리던 문제를 고쳤다. 다음 세트를 조기 시작하거나 휴식을 0초로 줄이거나 세트를 undo해 세션이 휴식을 벗어나도, 옛 마감에 예약된 다음 세트 카드가 남아 그 시각에 유령 알림음을 울렸다.
+- Actions: `updateLiveActivity`의 일반 갱신 경로에서 비휴식 세션의 pending Activity를 `end(nil, .immediate)`로 취소하게 했다. 휴식이 자연 만료돼 앱이 포그라운드에서 다음 세트로 전환하는 경우에도 같은 경로가 아직 시작 전인 카드를 취소해 인앱 큐와 카드 알림음의 중복도 줄인다.
+- Decisions: 예약 카드의 시작 알림음은 "예약이 유효한 동안"만 의미가 있으므로, 세션 상태가 resting이 아니게 되는 모든 전이는 pending 카드 취소를 동반해야 한다. 이 불변 조건은 일반 갱신 루프에 두어 개별 전이 코드가 잊지 못하게 한다.
+- Verification: `swift test` 81개(30+8+38+5) 통과, `swift run DamSetCoreSmoke` 통과, `git diff --check` 통과, generic iOS `xcodebuild ... build` 성공, iPhone 11 `devicectl device install app`·`process launch` 성공. 조기 시작 후 옛 마감 시각에 알림음이 안 울리는지는 사용자 QA로 남김.
+- Wiki: `wiki/architecture.md`, `wiki/log.md`

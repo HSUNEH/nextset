@@ -27,6 +27,10 @@ public struct DamSetActivityAttributes: ActivityAttributes {
         public var nextTargetReps: Int?
         public var nextTargetDurationSeconds: Int?
         public var nextTargetWeight: Double?
+        /// For a pending scheduled Activity: the rest deadline the schedule
+        /// was created for. A later rest adjustment compares this against the
+        /// session's `resumeAt` to decide whether the pending card is stale.
+        public var scheduledStart: Date?
 
         public init(
             exerciseName: String,
@@ -47,7 +51,8 @@ public struct DamSetActivityAttributes: ActivityAttributes {
             nextTrackingMode: String? = nil,
             nextTargetReps: Int? = nil,
             nextTargetDurationSeconds: Int? = nil,
-            nextTargetWeight: Double? = nil
+            nextTargetWeight: Double? = nil,
+            scheduledStart: Date? = nil
         ) {
             self.exerciseName = exerciseName
             self.exerciseKind = exerciseKind
@@ -68,6 +73,7 @@ public struct DamSetActivityAttributes: ActivityAttributes {
             self.nextTargetReps = nextTargetReps
             self.nextTargetDurationSeconds = nextTargetDurationSeconds
             self.nextTargetWeight = nextTargetWeight
+            self.scheduledStart = scheduledStart
         }
 
         public init(_ state: LockScreenState, nextSet: PlannedSet? = nil) {
@@ -105,6 +111,7 @@ public struct DamSetActivityAttributes: ActivityAttributes {
             case resumeAt, phase
             case nextExerciseName, nextExerciseKind, nextTrackingMode
             case nextTargetReps, nextTargetDurationSeconds, nextTargetWeight
+            case scheduledStart
         }
 
         public init(from decoder: Decoder) throws {
@@ -130,7 +137,8 @@ public struct DamSetActivityAttributes: ActivityAttributes {
                 nextTrackingMode: try container.decodeIfPresent(String.self, forKey: .nextTrackingMode),
                 nextTargetReps: try container.decodeIfPresent(Int.self, forKey: .nextTargetReps),
                 nextTargetDurationSeconds: try container.decodeIfPresent(Int.self, forKey: .nextTargetDurationSeconds),
-                nextTargetWeight: try container.decodeIfPresent(Double.self, forKey: .nextTargetWeight)
+                nextTargetWeight: try container.decodeIfPresent(Double.self, forKey: .nextTargetWeight),
+                scheduledStart: try container.decodeIfPresent(Date.self, forKey: .scheduledStart)
             )
         }
     }
@@ -174,37 +182,64 @@ public enum WorkoutSessionSync {
     /// hoping a widget timeline wakes the app at the end of rest.
     private static func scheduledNextSetContent(
         for session: WorkoutRoutineSession,
-        nextSet: PlannedSet
+        nextSet: PlannedSet,
+        startingAt resumeAt: Date
     ) -> ActivityContent<DamSetActivityAttributes.ContentState> {
         let nextState = LockScreenState.performing(
             nextSet,
             setIndex: session.currentSetIndex + 1,
             totalSets: session.plannedSets.count
         )
-        return ActivityContent(
-            state: DamSetActivityAttributes.ContentState(nextState),
-            staleDate: nil
-        )
+        var state = DamSetActivityAttributes.ContentState(nextState)
+        state.scheduledStart = resumeAt
+        return ActivityContent(state: state, staleDate: nil)
     }
 
-    /// Returns `true` only when the system accepted (or already holds) the
-    /// scheduled next-set card. The caller can then safely retire the resting
-    /// card at the same deadline without needing a server or AlarmKit.
+    private enum NextSetScheduleOutcome {
+        /// The scheduled-start path cannot be used; fall back to plain updates.
+        case unavailable
+        /// An existing pending card already matches the session's deadline.
+        case kept
+        /// A fresh pending card was scheduled (normal rest start).
+        case scheduled
+        /// A stale pending card was replaced after the rest deadline moved.
+        case rescheduled
+    }
+
+    /// Ensures the system holds a scheduled next-set card that matches the
+    /// session's current rest deadline. The caller can then safely retire the
+    /// resting card at the same deadline without needing a server or AlarmKit.
     private static func scheduleNextSetActivityIfPossible(
         for session: WorkoutRoutineSession
-    ) -> Bool {
+    ) async -> NextSetScheduleOutcome {
         guard session.sessionStatus == .resting,
               let resumeAt = session.lockScreenState.resumeAt,
               resumeAt > Date.now,
               let nextSet = session.nextPlannedSet,
               ActivityAuthorizationInfo().areActivitiesEnabled else {
-            return false
+            return .unavailable
         }
 
-        if Activity<DamSetActivityAttributes>.activities.contains(where: {
-            $0.attributes.sessionId == session.sessionId && $0.activityState == .pending
-        }) {
-            return true
+        // A ±30s rest adjustment moves `resumeAt` after the pending card was
+        // created. Keep a pending card only while its recorded start still
+        // matches; otherwise cancel it and schedule a replacement below.
+        var keptPending = false
+        var cancelledStalePending = false
+        for pending in Activity<DamSetActivityAttributes>.activities where
+            pending.attributes.sessionId == session.sessionId
+                && pending.activityState == .pending {
+            if !keptPending,
+               let scheduledStart = pending.content.state.scheduledStart,
+               abs(scheduledStart.timeIntervalSince(resumeAt)) < 1 {
+                keptPending = true
+                continue
+            }
+            await pending.end(nil, dismissalPolicy: .immediate)
+            cancelledStalePending = true
+        }
+        if keptPending {
+            RestCueScheduler.cancelPendingCues()
+            return .kept
         }
 
         let attributes = DamSetActivityAttributes(
@@ -220,7 +255,7 @@ public enum WorkoutSessionSync {
         do {
             _ = try Activity.request(
                 attributes: attributes,
-                content: scheduledNextSetContent(for: session, nextSet: nextSet),
+                content: scheduledNextSetContent(for: session, nextSet: nextSet, startingAt: resumeAt),
                 pushType: nil,
                 style: .standard,
                 alertConfiguration: alert,
@@ -230,9 +265,9 @@ public enum WorkoutSessionSync {
             // older local-notification countdown would play a second, delayed
             // sequence after the next card has already appeared.
             RestCueScheduler.cancelPendingCues()
-            return true
+            return cancelledStalePending ? .rescheduled : .scheduled
         } catch {
-            return false
+            return .unavailable
         }
     }
     #endif
@@ -267,26 +302,68 @@ public enum WorkoutSessionSync {
         #if os(iOS) && canImport(ActivityKit)
         let content = activityContent(for: session)
         if session.sessionStatus == .resting,
-           scheduleNextSetActivityIfPossible(for: session),
            let resumeAt = session.lockScreenState.resumeAt {
-            for activity in Activity<DamSetActivityAttributes>.activities where
-                activity.attributes.sessionId == session.sessionId
-                    && (activity.activityState == .active || activity.activityState == .stale) {
-                // The resting card remains visible and counts down until the
-                // scheduled next-set card takes its place at `resumeAt`.
-                await activity.end(content, dismissalPolicy: .after(resumeAt))
+            let outcome = await scheduleNextSetActivityIfPossible(for: session)
+            if outcome != .unavailable {
+                var restingCardRetired = false
+                for activity in Activity<DamSetActivityAttributes>.activities where
+                    activity.attributes.sessionId == session.sessionId
+                        && (activity.activityState == .active || activity.activityState == .stale) {
+                    // The resting card remains visible and counts down until the
+                    // scheduled next-set card takes its place at `resumeAt`.
+                    await activity.end(content, dismissalPolicy: .after(resumeAt))
+                    restingCardRetired = true
+                }
+                if outcome == .rescheduled && !restingCardRetired {
+                    await replaceEndedRestingCard(for: session, content: content, resumeAt: resumeAt)
+                }
+                return
             }
-            return
         }
         for activity in Activity<DamSetActivityAttributes>.activities where activity.attributes.sessionId == session.sessionId {
             if session.sessionStatus == .completed || session.sessionStatus == .cancelled {
                 await activity.end(content, dismissalPolicy: .immediate)
+            } else if activity.activityState == .pending {
+                // A scheduled next-set card outlives its rest when the user
+                // skips ahead, shortens the rest to zero, or undoes the set.
+                // Cancel it here or its start alert still fires at the old
+                // deadline, sounding a second, phantom rest-end alarm.
+                await activity.end(nil, dismissalPolicy: .immediate)
             } else {
                 await activity.update(content)
             }
         }
         #endif
     }
+
+    #if os(iOS) && canImport(ActivityKit)
+    /// A retired resting card keeps the dismissal date it was ended with and
+    /// its content can no longer change, so a moved rest deadline needs a
+    /// replacement card. Deadline changes only originate in the foreground app
+    /// (the lock screen has no rest-adjust control), where requesting a new
+    /// Activity is permitted.
+    private static func replaceEndedRestingCard(
+        for session: WorkoutRoutineSession,
+        content: ActivityContent<DamSetActivityAttributes.ContentState>,
+        resumeAt: Date
+    ) async {
+        for retired in Activity<DamSetActivityAttributes>.activities where
+            retired.attributes.sessionId == session.sessionId
+                && retired.activityState == .ended {
+            await retired.end(nil, dismissalPolicy: .immediate)
+        }
+        let attributes = DamSetActivityAttributes(
+            sessionId: session.sessionId,
+            routineName: session.routineName
+        )
+        guard let activity = try? Activity.request(
+            attributes: attributes,
+            content: content,
+            pushType: nil
+        ) else { return }
+        await activity.end(content, dismissalPolicy: .after(resumeAt))
+    }
+    #endif
 
     public static func endAllLiveActivities() async {
         #if os(iOS) && canImport(ActivityKit)

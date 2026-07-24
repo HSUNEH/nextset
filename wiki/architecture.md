@@ -1,7 +1,7 @@
 ---
 type: architecture
 status: active
-updated: "2026-07-19"
+updated: "2026-07-24"
 tags: [architecture, state-machine, persistence, live-activity]
 sources:
   - Package.swift
@@ -95,6 +95,17 @@ activity의 변경을 무시한다.
   Activity의 시작 알림음이 종료 신호를 담당하므로 중복 로컬 알림은 취소한다.
   예약할 수 없는 경우 `RestCueScheduler`가 `resumeAt`에 맞춰 로컬 알림을
   예약하는 폴백이다. 이 전환은 서버나 앱 깨우기에 의존하지 않는다.
+- 휴식 ±30초 조정: pending 예약 카드는 생성 당시 마감을
+  `ContentState.scheduledStart`에 새겨 두고, 갱신 때 세션 `resumeAt`과 1초
+  이상 어긋나면 취소 후 재예약한다. 이미 종료된(zombie) 휴식 카드는 내용을
+  바꿀 수 없으므로 즉시 dismiss하고 새 휴식 카드를 요청해 새 마감으로
+  교체한다. 조정은 앱 포그라운드에서만 발생하므로(잠금 화면에 ±30 컨트롤
+  없음) 즉시 요청이 허용된다.
+- pending 카드 수명: 예약 알림음은 카드 시작에 묶여 있으므로, 세션이
+  휴식을 벗어나면(다음 세트 조기 시작, 휴식 0초 단축, 세트 undo) 일반 갱신
+  경로에서 pending 카드를 반드시 `end(nil, .immediate)`로 취소한다.
+  취소하지 않으면 옛 마감 시각에 유령 시작 알림음이 그대로 울려 휴식
+  종료음이 두 번 들린다.
 
 ## 저장
 
